@@ -27,6 +27,10 @@
             <form method="post" action="{{ url_for('accion_cotizar') }}" class="inline-form">
               <input type="hidden" name="id" value="{{ v.id }}">
               <input type="number" step="0.01" name="monto" placeholder="Monto" required>
+              <form class="inline-form" action="{{ url_for('accion_cotizar') }}" method="post">
+            <input type="hidden" name="id" value="{{ v.id }}">
+            <input type="number" step="0.01" min="0" name="monto_total" placeholder="Monto total">
+            <input type="number" step="0.01" min="0" name="porcentaje" value="15" style="width:70px">
               <button type="submit">Cotizar</button>
             </form>
           </td>

@@ -110,18 +110,29 @@ def por_cotizar():
 @app.route("/accion/cotizar", methods=["POST"])
 def accion_cotizar():
     v_id = request.form.get("id")
-    monto = request.form.get("monto")
+    monto_total = request.form.get("monto_total")
+    porcentaje = request.form.get("porcentaje")
 
-    if not v_id or not monto:
-        flash("Falta ID o monto.", "error")
+    if not v_id or not monto_total or not porcentaje:
+        flash("Falta ID, monto total o porcentaje.", "error")
         return redirect(url_for("por_cotizar"))
+
+    try:
+        monto_total = float(monto_total)
+        porcentaje = float(porcentaje)
+    except ValueError:
+        flash("Monto o porcentaje inválidos.", "error")
+        return redirect(url_for("por_cotizar"))
+
+    # monto que se cobrará al usuario
+    monto_cobrar = round(monto_total * (porcentaje / 100.0), 2)
 
     res = (
         supabase.table("cotizaciones")
-        .update({"monto": monto, "estado": "Cotizado"})
+        .update({"monto": monto_cobrar, "estado": "Cotizado"})
         .eq("id", v_id)
         .execute()
-    )
+    )  
 
     if not res.data:
         flash("No se encontró el vuelo.", "error")
@@ -137,7 +148,8 @@ def accion_cotizar():
 
     texto = (
         f"💰 Tu vuelo ID {v_id} ha sido cotizado.\n"
-        f"Monto a pagar: {monto}\n\n"
+        f"Monto a pagar: {monto_cobrar}\n"
+        f"(Equivale al {porcentaje}% del total)\n\n"
         "Cuando tengas tu comprobante usa el botón \"📸 Enviar Pago\" en el bot."
     )
 
@@ -149,6 +161,7 @@ def accion_cotizar():
         flash("Cotización guardada pero no se pudo notificar al usuario.", "error")
 
     return redirect(url_for("por_cotizar"))
+
 
 
 # ----------------- VALIDAR PAGOS -----------------
