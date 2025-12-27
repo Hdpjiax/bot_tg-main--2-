@@ -2,6 +2,7 @@ import os
 from datetime import datetime, timedelta
 import requests
 import json
+from collections import Counter
 
 from flask import (
     Flask, render_template, request,
@@ -51,12 +52,15 @@ def general():
     hoy = datetime.utcnow().date()
     manana = hoy + timedelta(days=1)
 
+    # obtener todos los usernames y contar distintos
     res_usuarios = (
         supabase.table("cotizaciones")
-        .select("username", count="exact", head=True)
+        .select("username")
         .execute()
+        .data
     )
-    usuarios_unicos = res_usuarios.count or 0
+    usernames = [r["username"] for r in res_usuarios if r.get("username")]
+    usuarios_unicos = len(set(usernames))
 
     res_total = (
         supabase.table("cotizaciones")
