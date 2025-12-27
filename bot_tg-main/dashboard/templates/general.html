@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+
+{% block titulo %}General / Estadísticas{% endblock %}
+{% block subtitulo %}Resumen de usuarios, recaudación y vuelos urgentes del día.{% endblock %}
+
+{% block contenido %}
+<div class="cards-row">
+  <div class="info-card info-card--blue">
+    <div class="info-card__label">Usuarios únicos</div>
+    <div class="info-card__value">{{ usuarios_unicos }}</div>
+  </div>
+
+  <div class="info-card info-card--green">
+    <div class="info-card__label">Total recaudado</div>
+    <div class="info-card__value">
+      ${{ '%.2f'|format(total_recaudado) }} MXN
+    </div>
+  </div>
+
+  <div class="info-card info-card--yellow">
+    <div class="info-card__label">Urgentes hoy ({{ hoy }})</div>
+    <div class="info-card__value">{{ urgentes|length }}</div>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="panel__header">
+    <div>
+      <h2 class="panel__title">Vuelos urgentes</h2>
+      <p class="panel__subtitle">
+        Vuelos con estado “Esperando confirmación de pago” o “Pago Confirmado” para hoy.
+      </p>
+    </div>
+  </div>
+
+  {% if urgentes %}
+  <table class="table table--compact">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Usuario</th>
+        <th>Fecha</th>
+        <th>Estado</th>
+        <th>Monto</th>
+        <th>Creado</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for v in urgentes %}
+      <tr>
+        <td>{{ v.id }}</td>
+        <td>@{{ v.username }}</td>
+        <td>
+        {{ v.fecha[:10].split('-')[2] }}-{{ v.fecha[:10].split('-')[1] }}-{{ v.fecha[:10].split('-')[0] }}
+        </td>
+        <td>{{ v.estado }}</td>
+        <td>{{ v.monto or '-' }}</td>
+        <td>{{ v.created_at }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="panel__empty">
+    No hay vuelos urgentes para hoy.
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

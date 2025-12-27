@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+
+{% block titulo %}Próximos vuelos (5 días){% endblock %}
+{% block subtitulo %}Vuelos programados en los siguientes días.{% endblock %}
+
+{% block contenido %}
+<div class="card glass">
+  {% if vuelos %}
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Usuario</th>
+          <th>Fecha</th>
+          <th>Monto</th>
+          <th>Estado</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for v in vuelos %}
+        <tr>
+          <td>{{ v.id }}</td>
+          <td>@{{ v.username }}</td>
+          <td>{{ v.fecha }}</td>
+          <td>{{ v.monto or "-" }}</td>
+          <td>{{ v.estado }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p>No hay vuelos próximos en el rango.</p>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block titulo %}Pagos por confirmar{% endblock %}
+{% block subtitulo %}Comprobantes recibidos, confirma y avisa al cliente.{% endblock %}
+
+{% block contenido %}
+<div class="card glass">
+  {% if vuelos %}
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Usuario</th>
+          <th>Fecha</th>
+          <th>Monto</th>
+          <th>Confirmar pago</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for v in vuelos %}
+        <tr>
+          <td>{{ v.id }}</td>
+          <td>@{{ v.username }}</td>
+          <td>{{ v.fecha or "-" }}</td>
+          <td>{{ v.monto or "-" }}</td>
+          <td>
+            <form method="post" action="{{ url_for('accion_confirmar_pago') }}">
+              <input type="hidden" name="id" value="{{ v.id }}">
+              <button type="submit">Confirmar</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p>No hay pagos pendientes de confirmación.</p>
+  {% endif %}
+</div>
+{% endblock %}

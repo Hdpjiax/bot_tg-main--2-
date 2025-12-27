@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+
+{% block titulo %}Vuelos por enviar QR{% endblock %}
+{% block subtitulo %}Pagos confirmados listos para entrega de pases.{% endblock %}
+
+{% block contenido %}
+<div class="card glass">
+  {% if vuelos %}
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Usuario</th>
+          <th>Fecha</th>
+          <th>Monto</th>
+          <th>Enviar QRs</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for v in vuelos %}
+        <tr>
+          <td>{{ v.id }}</td>
+          <td>@{{ v.username }}</td>
+          <td>{{ v.fecha or "-" }}</td>
+          <td>{{ v.monto or "-" }}</td>
+          <td>
+            <form method="post"
+                  action="{{ url_for('accion_enviar_qr') }}"
+                  enctype="multipart/form-data"
+                  class="inline-form">
+              <input type="hidden" name="id" value="{{ v.id }}">
+              <input type="file" name="fotos" accept="image/*" multiple required>
+              <button type="submit">Enviar QRs</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p>No hay vuelos pendientes de envío de QR.</p>
+  {% endif %}
+</div>
+{% endblock %}

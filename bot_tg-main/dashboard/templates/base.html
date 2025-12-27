@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Vuelos Pro - Admin</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand">VUELOS<span>PRO</span></div>
+
+      <div class="sidebar-section">
+        <div class="sidebar-title">Panel administrativo</div>
+        <nav class="sidebar-nav">
+          <a href="{{ url_for('general') }}"
+             class="nav-link {% if request.path == url_for('general') %}active{% endif %}">
+            General / Estadísticas
+          </a>
+        </nav>
+      </div>
+
+      <div class="sidebar-section">
+        <div class="sidebar-title">Operaciones</div>
+        <nav class="sidebar-nav">
+          <a href="{{ url_for('por_cotizar') }}"
+             class="nav-link {% if request.path == url_for('por_cotizar') %}active{% endif %}">
+            📄 Por Cotizar
+          </a>
+          <a href="{{ url_for('validar_pagos') }}"
+             class="nav-link {% if request.path == url_for('validar_pagos') %}active{% endif %}">
+            💳 Validar Pagos
+          </a>
+          <a href="{{ url_for('por_enviar_qr') }}"
+             class="nav-link {% if request.path == url_for('por_enviar_qr') %}active{% endif %}">
+            🎫 Por Enviar QR
+          </a>
+        </nav>
+      </div>
+
+      <div class="sidebar-section">
+        <div class="sidebar-title">Monitoreo</div>
+        <nav class="sidebar-nav">
+          <a href="{{ url_for('proximos_vuelos') }}"
+             class="nav-link {% if request.path == url_for('proximos_vuelos') %}active{% endif %}">
+            🛫 Próximos vuelos
+          </a>
+          <a href="{{ url_for('historial') }}"
+             class="nav-link {% if request.path == url_for('historial') %}active{% endif %}">
+            📚 Historial
+          </a>
+        </nav>
+      </div>
+    </aside>
+
+    <main class="content fade-in">
+      <header class="content-header glass">
+        <h1>{% block titulo %}{% endblock %}</h1>
+        <p class="subtitulo">{% block subtitulo %}{% endblock %}</p>
+      </header>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <div class="flash-container">
+            {% for category, msg in messages %}
+              <div class="flash {{ category }}">{{ msg }}</div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endwith %}
+
+      <section class="content-body">
+        {% block contenido %}{% endblock %}
+      </section>
+    </main>
+  </div>
+</body>
+</html>

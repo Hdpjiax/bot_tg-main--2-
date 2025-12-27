@@ -1,0 +1,249 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="tabs glass">
+  <button class="tab-btn active" data-target="tab-cot">Pendientes de cotizar</button>
+  <button class="tab-btn" data-target="tab-pago">Pendientes de pago</button>
+  <button class="tab-btn" data-target="tab-conf">Pendientes de confirmar pago</button>
+  <button class="tab-btn" data-target="tab-prox">Próximos vuelos</button>
+  <button class="tab-btn" data-target="tab-hist">Historial</button>
+</div>
+
+<div class="tab-panels">
+  <!-- Pendientes de cotización -->
+  <section id="tab-cot" class="tab-panel active card glass">
+    <h2>Pendientes de cotización</h2>
+    {% if pendientes_cot %}
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Usuario</th>
+            <th>Fecha</th>
+            <th>Datos</th>
+            <th>Cotizar</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for v in pendientes_cot %}
+          <tr>
+            <td>{{ v.id }}</td>
+            <td>@{{ v.username }}</td>
+            <td>{{ v.fecha or "-" }}</td>
+            <td>{{ v.pedido_completo }}</td>
+            <td>
+              <form method="post" action="{{ url_for('accion_cotizar') }}" class="inline-form">
+                <input type="hidden" name="id" value="{{ v.id }}">
+                <input type="number" step="0.01" name="monto" placeholder="Monto">
+                <button type="submit">Cotizar</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p>No hay vuelos pendientes de cotización.</p>
+    {% endif %}
+  </section>
+
+  <!-- Pendientes de pago (cotizados + esperando confirmación) -->
+  <section id="tab-pago" class="tab-panel card glass">
+    <h2>Pendientes de pago</h2>
+    {% if pendientes_pago %}
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Usuario</th>
+            <th>Monto</th>
+            <th>Estado</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for v in pendientes_pago %}
+          <tr>
+            <td>{{ v.id }}</td>
+            <td>@{{ v.username }}</td>
+            <td>{{ v.monto or "-" }}</td>
+            <td>{{ v.estado }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p>No hay vuelos pendientes de pago.</p>
+    {% endif %}
+  </section>
+
+  <!-- Pendientes de confirmar pago (solo 'Esperando confirmación de pago') -->
+  <section id="tab-conf" class="tab-panel card glass">
+    <h2>Pendientes de confirmar pago</h2>
+    {% if pendientes_confirmar %}
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Usuario</th>
+            <th>Monto</th>
+            <th>Confirmar pago</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for v in pendientes_confirmar %}
+          <tr>
+            <td>{{ v.id }}</td>
+            <td>@{{ v.username }}</td>
+            <td>{{ v.monto or "-" }}</td>
+            <td>
+              <form method="post" action="{{ url_for('accion_confirmar_pago') }}">
+                <input type="hidden" name="id" value="{{ v.id }}">
+                <button type="submit">Confirmar</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p>No hay pagos pendientes de confirmación.</p>
+    {% endif %}
+  </section>
+
+  <!-- Próximos vuelos -->
+  <section id="tab-prox" class="tab-panel card glass">
+    <h2>Próximos vuelos (5 días)</h2>
+    {% if proximos %}
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Usuario</th>
+            <th>Fecha</th>
+            <th>Estado</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for v in proximos %}
+          <tr>
+            <td>{{ v.id }}</td>
+            <td>@{{ v.username }}</td>
+            <td>{{ v.fecha }}</td>
+            <td>{{ v.estado }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p>No hay vuelos próximos en el rango.</p>
+    {% endif %}
+  </section>
+
+  <!-- Historial + botón enviar QRs (abre modal) -->
+  <section id="tab-hist" class="tab-panel card glass">
+    <h2>Historial de vuelos</h2>
+    {% if historial %}
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Usuario</th>
+            <th>Fecha</th>
+            <th>Estado</th>
+            <th>QRs</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for v in historial %}
+          <tr>
+            <td>{{ v.id }}</td>
+            <td>@{{ v.username }}</td>
+            <td>{{ v.fecha or "-" }}</td>
+            <td>{{ v.estado }}</td>
+            <td>
+              {% if v.estado in ["Pago Confirmado", "QR Enviados"] %}
+              <button type="button"
+                      class="btn-link"
+                      onclick="abrirModalQr('{{ v.id }}')">
+                {% if v.estado == "QR Enviados" %}
+                Reenviar
+                {% else %}
+                Enviar
+                {% endif %}
+              </button>
+              {% else %}
+                <span class="tag-muted">Pendiente de pago</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p>No hay historial registrado.</p>
+    {% endif %}
+  </section>
+</div>
+
+<!-- Modal para enviar QRs -->
+<div id="modal-qrs" class="modal-overlay hidden">
+  <div class="modal glass zoom-in">
+    <h3>Enviar QRs</h3>
+    <form id="form-qrs" method="post" action="{{ url_for('accion_enviar_qr') }}" enctype="multipart/form-data">
+      <input type="hidden" name="id" id="qr-id-input">
+      <p>Vuelo ID: <span id="qr-id-label"></span></p>
+      <p>Selecciona una o varias imágenes con los códigos QR.</p>
+      <input type="file" name="fotos" accept="image/*" multiple required>
+      <div class="modal-actions">
+        <button type="button" class="btn-secondary" onclick="cerrarModalQr()">Cancelar</button>
+        <button type="submit">Enviar QRs</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Tabs
+  const tabButtons = document.querySelectorAll('.tab-btn');
+  const panels = document.querySelectorAll('.tab-panel');
+
+  tabButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      tabButtons.forEach(b => b.classList.remove('active'));
+      panels.forEach(p => p.classList.remove('active'));
+
+      btn.classList.add('active');
+      const target = document.getElementById(btn.dataset.target);
+      if (target) target.classList.add('active');
+    });
+  });
+
+  // Modal QRs
+  function abrirModalQr(id) {
+    document.getElementById('qr-id-input').value = id;
+    document.getElementById('qr-id-label').textContent = id;
+    document.getElementById('modal-qrs').classList.remove('hidden');
+  }
+
+  function cerrarModalQr() {
+    document.getElementById('modal-qrs').classList.add('hidden');
+  }
+
+  // Animación simple de carga/actualización automática cada 20s
+  async function refrescarTablas() {
+    try {
+      const res = await fetch("/api/resumen");
+      if (!res.ok) return;
+      const data = await res.json();
+      // Aquí podrías reconstruir las tablas con JS si quieres
+      // De momento, solo mostramos un log
+      console.log("Datos actualizados", data);
+    } catch (e) {
+      console.error(e);
+    }
+  }
+  setInterval(refrescarTablas, 20000);
+</script>
+{% endblock %}

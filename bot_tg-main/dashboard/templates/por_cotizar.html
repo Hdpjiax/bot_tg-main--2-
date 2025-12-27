@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block titulo %}Vuelos por cotizar{% endblock %}
+{% block subtitulo %}Solicitudes nuevas pendientes de monto.{% endblock %}
+
+{% block contenido %}
+<div class="card glass">
+  {% if vuelos %}
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Usuario</th>
+          <th>Fecha</th>
+          <th>Información del vuelo</th>
+          <th>Cotizar</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for v in vuelos %}
+        <tr>
+          <td>{{ v.id }}</td>
+          <td>@{{ v.username }}</td>
+          <td>{{ v.fecha or "-" }}</td>
+          <td>{{ v.pedido_completo }}</td>
+          <td>
+            <form method="post" action="{{ url_for('accion_cotizar') }}" class="inline-form">
+              <input type="hidden" name="id" value="{{ v.id }}">
+              <input type="number" step="0.01" name="monto" placeholder="Monto" required>
+              <button type="submit">Cotizar</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p>No hay vuelos pendientes de cotización.</p>
+  {% endif %}
+</div>
+{% endblock %}
