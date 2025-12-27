@@ -9,8 +9,15 @@
     <table>
       <thead>
         <tr>
-          <th>ID</th>
-          <th>Usuario</th>
+          <td>
+  <a href="{{ url_for('detalle_vuelo', vuelo_id=v.id) }}" class="btn-link">
+    {{ v.id }}
+  </a>
+</td>
+  <a href="{{ url_for('historial_usuario', username=v.username) }}" class="btn-link">
+    @{{ v.username }}
+  </a>
+</td>
           <th>Fecha</th>
           <th>Monto</th>
           <th>Estado</th>

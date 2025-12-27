@@ -47,6 +47,48 @@ def enviar_foto(chat_id: int, fileobj, caption: str = ""):
 
 
 # ----------------- GENERAL / ESTADÍSTICAS -----------------
+@app.route("/vuelo/<int:vuelo_id>")
+def detalle_vuelo(vuelo_id):
+    res = (
+        supabase.table("cotizaciones")
+        .select("*")
+        .eq("id", vuelo_id)
+        .single()
+        .execute()
+    )
+    if not res.data:
+        flash("Vuelo no encontrado.", "error")
+        return redirect(url_for("historial"))
+
+    vuelo = res.data
+    return render_template("detalle_vuelo.html", vuelo=vuelo)
+@app.route("/accion/borrar_vuelo", methods=["POST"])
+def borrar_vuelo():
+    v_id = request.form.get("id")
+    if not v_id:
+        flash("Falta ID de vuelo.", "error")
+        return redirect(url_for("historial"))
+
+    # Solo permitir borrar si no está pagado ni con QR
+    res = (
+        supabase.table("cotizaciones")
+        .select("estado")
+        .eq("id", v_id)
+        .single()
+        .execute()
+    )
+    if not res.data:
+        flash("Vuelo no encontrado.", "error")
+        return redirect(url_for("historial"))
+
+    if res.data["estado"] in ["Pago Confirmado", "QR Enviados"]:
+        flash("No se puede borrar un vuelo ya pagado o con QR.", "error")
+        return redirect(url_for("detalle_vuelo", vuelo_id=v_id))
+
+    supabase.table("cotizaciones").delete().eq("id", v_id).execute()
+    flash("Vuelo borrado correctamente.", "success")
+    return redirect(url_for("historial"))
+
 @app.route("/")
 def general():
     hoy = datetime.utcnow().date()
@@ -320,18 +362,34 @@ def proximos_vuelos():
 
 
 # ----------------- HISTORIAL -----------------
-
-@app.route("/historial")
-def historial():
+@app.route("/historial-usuario/<username>")
+def historial_usuario(username):
     vuelos = (
         supabase.table("cotizaciones")
         .select("*")
+        .eq("username", username)
         .order("created_at", desc=True)
-        .limit(300)
         .execute()
         .data
     )
-    return render_template("historial.html", vuelos=vuelos)
+
+    total_pagado = sum(
+        float(v["monto"]) for v in vuelos
+        if v.get("monto") and v.get("estado") in ["Pago Confirmado", "QR Enviados"]
+    )
+
+    pagos_confirmados = sum(
+        1 for v in vuelos
+        if v.get("estado") in ["Pago Confirmado", "QR Enviados"]
+    )
+
+    return render_template(
+        "historial_usuario.html",
+        username=username,
+        vuelos=vuelos,
+        total_pagado=total_pagado,
+        pagos_confirmados=pagos_confirmados,
+    )
 
 
 # ----------------- MAIN -----------------

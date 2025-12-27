@@ -9,7 +9,7 @@ from flask import Flask
 from supabase import create_client, Client
 from telegram import (
     Update, InlineKeyboardButton, InlineKeyboardMarkup,
-    ReplyKeyboardMarkup, KeyboardButton, InputMediaPhoto
+    ReplyKeyboardMarkup, KeyboardButton
 )
 from telegram.ext import (
     ApplicationBuilder, ContextTypes, CommandHandler,
@@ -31,7 +31,6 @@ def run_server():
     port = int(os.environ.get("PORT", 10000))
     app_web.run(host='0.0.0.0', port=port)
 
-
 # --- 2. CONFIGURACIÓN ---
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_CHAT_ID = 7721918273
@@ -43,21 +42,18 @@ SOPORTE_USER = "@TuUsuarioSoporte"
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 logging.basicConfig(level=logging.INFO)
 
-
 # --- 3. TECLADOS ---
-
 def get_user_keyboard():
     return ReplyKeyboardMarkup(
         [
             [KeyboardButton("📝 Datos de vuelo"), KeyboardButton("📸 Enviar Pago")],
+            [KeyboardButton("✏️ Editar vuelo"), KeyboardButton("🗑 Borrar vuelo")],
             [KeyboardButton("🆘 Soporte")],
         ],
         resize_keyboard=True,
     )
 
-
 # --- 4. EXTRAER FECHA DEL TEXTO ---
-
 DATE_PATTERN = re.compile(r"\b(\d{1,2})[/-](\d{1,2})[/-](\d{4})\b")
 
 def extraer_fecha(texto: str):
@@ -71,7 +67,6 @@ def extraer_fecha(texto: str):
     except ValueError:
         return None
 
-
 # --- 5. HANDLERS USUARIO ---
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -79,7 +74,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "✈️ Bienvenido al Sistema de Vuelos\nUsa el menú para iniciar.",
         reply_markup=get_user_keyboard(),
     )
-
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
@@ -91,6 +85,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("El panel de administración está en la web.")
         return
 
+    # --- NUEVA COTIZACIÓN ---
     if texto == "📝 Datos de vuelo":
         udata.clear()
         udata["estado"] = "usr_esperando_datos"
@@ -99,6 +94,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Ejemplo: CDMX a Cancún el 25-12-2025."
         )
 
+    # --- ENVIAR PAGO ---
     elif texto == "📸 Enviar Pago":
         udata.clear()
         udata["estado"] = "usr_esperando_id_pago"
@@ -106,6 +102,96 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Escribe el ID del vuelo que vas a pagar."
         )
 
+    # --- EDITAR VUELO (PASO 1: ID) ---
+    elif texto == "✏️ Editar vuelo":
+        udata.clear()
+        udata["estado"] = "usr_editando_id"
+        await update.message.reply_text(
+            "Escribe el ID del vuelo que deseas editar."
+        )
+
+    elif udata.get("estado") == "usr_editando_id":
+        v_id = texto.strip()
+        res = (
+            supabase.table("cotizaciones")
+            .select("id, estado")
+            .eq("id", v_id)
+            .eq("user_id", str(uid))
+            .single()
+            .execute()
+        )
+        if not res.data:
+            await update.message.reply_text(
+                "❌ No se encontró ese ID asociado a tu cuenta."
+            )
+            return
+
+        if res.data["estado"] in ["Pago Confirmado", "QR Enviados"]:
+            await update.message.reply_text(
+                "Este vuelo ya no se puede editar (ya confirmado o con QR)."
+            )
+            udata.clear()
+            return
+
+        udata["edit_vuelo_id"] = v_id
+        udata["estado"] = "usr_editando_datos"
+        await update.message.reply_text(
+            "Escribe los nuevos datos de tu vuelo (origen, destino y fecha).\n"
+            "Ejemplo: CDMX a Cancún el 26-12-2025 06:00 AM."
+        )
+
+    elif udata.get("estado") == "usr_editando_datos":
+        v_id = udata.get("edit_vuelo_id")
+        nuevos_datos = texto
+        fecha = extraer_fecha(nuevos_datos)
+
+        supabase.table("cotizaciones").update(
+            {
+                "pedido_completo": nuevos_datos,
+                "fecha": fecha,
+                "estado": "Esperando atención",  # vuelve a cola de revisión
+            }
+        ).eq("id", v_id).execute()
+
+        await update.message.reply_text("✅ Tu vuelo ha sido actualizado.")
+        udata.clear()
+
+    # --- BORRAR VUELO ---
+    elif texto == "🗑 Borrar vuelo":
+        udata.clear()
+        udata["estado"] = "usr_borrando_id"
+        await update.message.reply_text(
+            "Escribe el ID del vuelo que deseas borrar."
+        )
+
+    elif udata.get("estado") == "usr_borrando_id":
+        v_id = texto.strip()
+        res = (
+            supabase.table("cotizaciones")
+            .select("id, estado")
+            .eq("id", v_id)
+            .eq("user_id", str(uid))
+            .single()
+            .execute()
+        )
+        if not res.data:
+            await update.message.reply_text(
+                "❌ No se encontró ese ID asociado a tu cuenta."
+            )
+            return
+
+        if res.data["estado"] in ["Pago Confirmado", "QR Enviados"]:
+            await update.message.reply_text(
+                "No puedes borrar un vuelo ya pagado o con QR enviado."
+            )
+            udata.clear()
+            return
+
+        supabase.table("cotizaciones").delete().eq("id", v_id).execute()
+        await update.message.reply_text("🗑 Vuelo borrado correctamente.")
+        udata.clear()
+
+    # --- SOPORTE ---
     elif texto == "🆘 Soporte":
         btn = InlineKeyboardMarkup(
             [[InlineKeyboardButton(
@@ -118,7 +204,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=btn,
         )
 
-    # Usuario manda descripción del vuelo
+    # --- FLUJO EXISTENTE: DATOS DE VUELO ---
     elif udata.get("estado") == "usr_esperando_datos":
         udata["tmp_datos"] = texto
         fecha = extraer_fecha(texto)
@@ -137,7 +223,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"{msg_fecha}\nAhora envía una imagen de referencia del vuelo."
         )
 
-    # Usuario indica ID de vuelo a pagar
+    # --- FLUJO EXISTENTE: PAGO (ID) ---
     elif udata.get("estado") == "usr_esperando_id_pago":
         v_id = texto.strip()
         res = (
@@ -178,7 +264,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Usa el menú para continuar.",
             reply_markup=get_user_keyboard(),
         )
-
 
 # --- 6. FOTOS: NUEVA COTIZACIÓN y COMPROBANTE ---
 
@@ -267,7 +352,6 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         udata.clear()
 
-
 # --- 7. CALLBACK SOLO PARA BOTÓN DE TELEGRAM ---
 
 async def callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -303,7 +387,6 @@ async def callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
             caption=f"✅ PAGO CONFIRMADO\nID Vuelo: {v_id}"
         )
 
-
 # --- 8. ARRANQUE ---
 
 if __name__ == "__main__":
@@ -315,5 +398,3 @@ if __name__ == "__main__":
     app.add_handler(MessageHandler(filters.PHOTO, handle_media))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     app.run_polling()
-
-

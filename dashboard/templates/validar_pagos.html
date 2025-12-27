@@ -10,7 +10,11 @@
       <thead>
         <tr>
           <th>ID</th>
-          <th>Usuario</th>
+          <td>
+  <a href="{{ url_for('historial_usuario', username=v.username) }}" class="btn-link">
+    @{{ v.username }}
+  </a>
+</td>
           <th>Fecha</th>
           <th>Monto</th>
           <th>Confirmar pago</th>

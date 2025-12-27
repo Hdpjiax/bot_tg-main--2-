@@ -1,0 +1,6 @@
+{% if vuelo.estado not in ["Pago Confirmado", "QR Enviados"] %}
+<form action="{{ url_for('borrar_vuelo') }}" method="post" onsubmit="return confirm('¿Borrar vuelo definitivamente?');">
+  <input type="hidden" name="id" value="{{ vuelo.id }}">
+  <button type="submit" class="btn-secondary">Borrar vuelo</button>
+</form>
+{% endif %}
