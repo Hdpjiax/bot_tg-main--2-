@@ -6,37 +6,40 @@
 {% block contenido %}
 <div class="card glass">
   {% if vuelos %}
-    <table>
-      <thead>
-        <tr>
-          <td>
-  <a href="{{ url_for('detalle_vuelo', vuelo_id=v.id) }}" class="btn-link">
-    {{ v.id }}
-  </a>
-</td>
-  <a href="{{ url_for('historial_usuario', username=v.username) }}" class="btn-link">
-    @{{ v.username }}
-  </a>
-</td>
-          <th>Fecha</th>
-          <th>Monto</th>
-          <th>Estado</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for v in vuelos %}
-        <tr>
-          <td>{{ v.id }}</td>
-          <td>@{{ v.username }}</td>
-          <td>{{ v.fecha or "-" }}</td>
-          <td>{{ v.monto or "-" }}</td>
-          <td>{{ v.estado }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Usuario</th>
+        <th>Fecha</th>
+        <th>Monto</th>
+        <th>Estado</th>
+        <th>Creado</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for v in vuelos %}
+      <tr>
+        <td>
+          <a href="{{ url_for('detalle_vuelo', vuelo_id=v.id) }}" class="btn-link">
+            {{ v.id }}
+          </a>
+        </td>
+        <td>
+          <a href="{{ url_for('historial_usuario', username=v.username) }}" class="btn-link">
+            @{{ v.username }}
+          </a>
+        </td>
+        <td>{{ v.fecha }}</td>
+        <td>{{ v.monto or '-' }}</td>
+        <td>{{ v.estado }}</td>
+        <td>{{ v.created_at }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
   {% else %}
-    <p>No hay historial registrado.</p>
+  <p>No hay historial registrado.</p>
   {% endif %}
 </div>
 {% endblock %}
