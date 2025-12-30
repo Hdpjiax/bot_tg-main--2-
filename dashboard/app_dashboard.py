@@ -376,6 +376,35 @@ def historial():
     )
     return render_template("historial.html", vuelos=vuelos)
 
+# ----------------- HISTORIAL POR USUARIO -----------------
+@app.route("/historial-usuario/<username>")
+def historial_usuario(username):
+    vuelos = (
+        supabase.table("cotizaciones")
+        .select("*")
+        .eq("username", username)
+        .order("created_at", desc=True)
+        .execute()
+        .data
+    )
+
+    total_pagado = sum(
+        float(v["monto"]) for v in vuelos
+        if v.get("monto") and v.get("estado") in ["Pago Confirmado", "QR Enviados"]
+    )
+
+    pagos_confirmados = sum(
+        1 for v in vuelos
+        if v.get("estado") in ["Pago Confirmado", "QR Enviados"]
+    )
+
+    return render_template(
+        "historial_usuario.html",
+        username=username,
+        vuelos=vuelos,
+        total_pagado=total_pagado,
+        pagos_confirmados=pagos_confirmados,
+    )
 
 
 # ----------------- MAIN -----------------
