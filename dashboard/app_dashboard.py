@@ -3,7 +3,9 @@ from datetime import datetime, timedelta
 import requests
 import json
 from collections import Counter
-
+import requests
+from google.auth.transport.requests import Request
+from google.oauth2.service_account import Credentials
 from flask import (
     Flask, render_template, request,
     redirect, url_for, flash
@@ -23,7 +25,32 @@ bot = Bot(token=BOT_TOKEN)
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "cambia_esto")
 
-
+def verificar_email_google_api(email: str) -> bool:
+    """
+    Verifica email usando Google Identity Toolkit API.
+    Requiere: pip install google-auth google-auth-oauthlib
+    """
+    try:
+        url = "https://identitytoolkit.googleapis.com/v3/relyingparty/verifyEmail"
+        payload = {
+            "email": email,
+            "returnSecureToken": False
+        }
+        # Necesitas API key de Google Cloud
+        api_key = os.getenv("AIzaSyB3MeYONY85TGbK94CX1bZuoQ-iwEHb8j4")
+        
+        response = requests.post(
+            f"{url}?key={api_key}",
+            json=payload,
+            timeout=5
+        )
+        
+        if response.status_code == 200:
+            return "error" not in response.json()
+        return False
+    except Exception as e:
+        app.logger.error(f"Error en verificación API Google: {e}")
+        return False
 def rango_proximos():
     hoy = datetime.utcnow().date()
     hasta = hoy + timedelta(days=5)
@@ -45,6 +72,83 @@ def enviar_foto(chat_id: int, fileobj, caption: str = ""):
 
 
 
+# ----------------- MAIL GENERATOR -----------------
+
+@app.route("/mail-generator")
+def mail_generator():
+    return render_template("mail_generator.html")
+
+@app.route("/accion/generar_email", methods=["POST"])
+def generar_email():
+    nombre = request.form.get("nombre", "").strip()
+    apellido = request.form.get("apellido", "").strip()
+    numero = request.form.get("numero", "").strip()
+    
+    if not nombre or not apellido:
+        flash("Nombre y apellido son requeridos.", "error")
+        return redirect(url_for("mail_generator"))
+    
+    # Generar variantes de email
+    variantes = []
+    base_email = f"{nombre.lower()}.{apellido.lower()}{numero if numero else ''}"
+    
+    # Crear diferentes combinaciones
+    combinaciones = [
+        f"{base_email}@gmail.com",
+        f"{nombre.lower()}{apellido.lower()}{numero}@gmail.com",
+        f"{nombre[0].lower()}{apellido.lower()}{numero}@gmail.com",
+        f"{apellido.lower()}{nombre[0].lower()}{numero}@gmail.com",
+    ]
+    
+    for email in combinaciones:
+        existe = verificar_email_google_api(email)
+        
+        # Guardar en Supabase
+        try:
+            supabase.table("emails_generados").insert({
+                "email": email,
+                "nombre": nombre,
+                "apellido": apellido,
+                "numero": numero,
+                "existe_en_google": existe
+            }).execute()
+        except Exception as e:
+            app.logger.error(f"Error guardando email {email}: {e}")
+        
+        variantes.append({
+            "email": email,
+            "existe": existe,
+            "estado": "✅ Existe" if existe else "❌ No existe"
+        })
+    
+    return render_template(
+        "mail_generator.html",
+        variantes=variantes,
+        nombre=nombre,
+        apellido=apellido,
+        numero=numero
+    )
+
+@app.route("/mail-generados")
+def mail_generados():
+    emails = (
+        supabase.table("emails_generados")
+        .select("*")
+        .order("verificado_en", desc=True)
+        .execute()
+        .data
+    )
+    
+    existe_count = sum(1 for e in emails if e.get("existe_en_google"))
+    no_existe_count = len(emails) - existe_count
+    
+    return render_template(
+        "mail_generados.html",
+        emails=emails,
+        total=len(emails),
+        existe_count=existe_count,
+        no_existe_count=no_existe_count
+    )
 
 # ----------------- GENERAL / ESTADÍSTICAS -----------------
 @app.route("/vuelo/<int:vuelo_id>")

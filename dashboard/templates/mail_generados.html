@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+
+{% block titulo %}Emails Generados{% endblock %}
+{% block subtitulo %}Historial de emails verificados.{% endblock %}
+
+{% block contenido %}
+<div class="glass card">
+  <div class="cards-row">
+    <div class="info-card info-card--blue">
+      <div class="info-card__label">Total Generados</div>
+      <div class="info-card__value">{{ total }}</div>
+    </div>
+    <div class="info-card info-card--green">
+      <div class="info-card__label">Existen en Google</div>
+      <div class="info-card__value">{{ existe_count }}</div>
+    </div>
+    <div class="info-card info-card--yellow">
+      <div class="info-card__label">No Existen</div>
+      <div class="info-card__value">{{ no_existe_count }}</div>
+    </div>
+  </div>
+
+  {% if emails %}
+  <table class="table table--compact">
+    <thead>
+      <tr>
+        <th>Email</th>
+        <th>Nombre</th>
+        <th>Apellido</th>
+        <th>Existe</th>
+        <th>Verificado en</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for e in emails %}
+      <tr>
+        <td><code>{{ e.email }}</code></td>
+        <td>{{ e.nombre }}</td>
+        <td>{{ e.apellido }}</td>
+        <td>
+          {% if e.existe_en_google %}
+          ✅ Sí
+          {% else %}
+          ❌ No
+          {% endif %}
+        </td>
+        <td>{{ e.verificado_en[:10] }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p>No hay emails generados aún.</p>
+  {% endif %}
+</div>
+{% endblock %}

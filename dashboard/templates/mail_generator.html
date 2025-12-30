@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+
+{% block titulo %}Generador de Emails{% endblock %}
+{% block subtitulo %}Genera y verifica emails @gmail.com en Google.{% endblock %}
+
+{% block contenido %}
+<div class="glass card">
+  <h3>Generar y Verificar Emails</h3>
+  
+  <form action="{{ url_for('generar_email') }}" method="post" class="inline-form">
+    <input type="text" name="nombre" placeholder="Nombre" required style="flex:1">
+    <input type="text" name="apellido" placeholder="Apellido" required style="flex:1">
+    <input type="text" name="numero" placeholder="Número (opcional)" style="flex:1">
+    <button type="submit" class="btn-primary">Generar</button>
+  </form>
+
+  {% if variantes %}
+  <div style="margin-top: 20px;">
+    <h4>Resultados ({{ variantes|length }} variantes):</h4>
+    <table class="table table--compact">
+      <thead>
+        <tr>
+          <th>Email</th>
+          <th>Estado</th>
+          <th>Acción</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for v in variantes %}
+        <tr>
+          <td><code>{{ v.email }}</code></td>
+          <td>{{ v.estado }}</td>
+          <td>
+            {% if v.existe %}
+            <button class="btn-small" onclick="copiar('{{ v.email }}')">Copiar</button>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+
+<div style="margin-top: 20px;">
+  <a href="{{ url_for('mail_generados') }}" class="btn-link">Ver historial de emails generados →</a>
+</div>
+
+<script>
+function copiar(email) {
+  navigator.clipboard.writeText(email);
+  alert('✅ ' + email + ' copiado al portapapeles');
+}
+</script>
+{% endblock %}

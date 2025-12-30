@@ -10,15 +10,17 @@
     <aside class="sidebar">
       <div class="brand">VUELOS<span>PRO</span></div>
 
+
       <div class="sidebar-section">
         <div class="sidebar-title">Panel administrativo</div>
         <nav class="sidebar-nav">
           <a href="{{ url_for('general') }}"
              class="nav-link {% if request.path == url_for('general') %}active{% endif %}">
-            General / Estadísticas
+            📊 General / Estadísticas
           </a>
         </nav>
       </div>
+
 
       <div class="sidebar-section">
         <div class="sidebar-title">Operaciones</div>
@@ -38,6 +40,7 @@
         </nav>
       </div>
 
+
       <div class="sidebar-section">
         <div class="sidebar-title">Monitoreo</div>
         <nav class="sidebar-nav">
@@ -51,13 +54,32 @@
           </a>
         </nav>
       </div>
+
+
+      <div class="sidebar-section">
+        <div class="sidebar-title">Herramientas</div>
+        <nav class="sidebar-nav">
+          <a href="{{ url_for('mail_generator') }}"
+             class="nav-link {% if request.path == url_for('mail_generator') %}active{% endif %}">
+            📧 Generador de Emails
+          </a>
+          <a href="{{ url_for('mail_generados') }}"
+             class="nav-link {% if request.path == url_for('mail_generados') %}active{% endif %}">
+            📋 Emails Generados
+          </a>
+        </nav>
+      </div>
+
+
     </aside>
+
 
     <main class="content fade-in">
       <header class="content-header glass">
         <h1>{% block titulo %}{% endblock %}</h1>
         <p class="subtitulo">{% block subtitulo %}{% endblock %}</p>
       </header>
+
 
       {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
@@ -68,6 +90,7 @@
           </div>
         {% endif %}
       {% endwith %}
+
 
       <section class="content-body">
         {% block contenido %}{% endblock %}
