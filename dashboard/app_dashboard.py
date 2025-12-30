@@ -25,32 +25,23 @@ app.secret_key = os.getenv("FLASK_SECRET_KEY", "cambia_esto")
 
 
 # ============= VERIFICACIÓN DE EMAIL =============
-
 def verificar_email_gmail(email: str) -> bool:
     """
     Verifica si un email @gmail.com existe usando Google Identity Toolkit API.
-    
-    Retorna:
-    - True: El email existe en Gmail
-    - False: El email NO existe o hay error
     """
-    
-    # Solo para emails de Gmail
     if not email.endswith("@gmail.com"):
         return False
     
     if not GOOGLE_API_KEY:
-        app.logger.warning("GOOGLE_API_KEY no configurada en .env")
+        app.logger.warning("GOOGLE_API_KEY no configurada")
         return False
     
     try:
-        # Endpoint correcto para verificar si el email está registrado
-        url = "https://identitytoolkit.googleapis.com/v3/relyingparty/createAuthUri"
+        # ✅ ENDPOINT CORRECTO para verificar existencia
+        url = "https://www.googleapis.com/identitytoolkit/v3/relyingparty/getAccountInfo"
         
         payload = {
-            "identifier": email,
-            "continueUri": "https://yourdomain.com/callback",
-            "openidIdentifiers": [email]
+            "email": [email]
         }
         
         response = requests.post(
@@ -59,19 +50,17 @@ def verificar_email_gmail(email: str) -> bool:
             timeout=5
         )
         
+        app.logger.info(f"API Response ({response.status_code}): {response.text[:200]}...")
+        
         if response.status_code == 200:
             data = response.json()
-            
-            # Si el email está registrado en Google
-            if data.get("registered"):
-                return True
-            
-            # Si hay proveedores de autenticación
-            if data.get("allProviders"):
-                return True
-            
-            return False
+            # Si hay usuarios en "users", el email existe
+            return bool(data.get("users"))
         
+        elif response.status_code == 400:
+            # Email no existe (normal)
+            return False
+            
         else:
             app.logger.error(f"Error Google API ({response.status_code}): {response.text}")
             return False
