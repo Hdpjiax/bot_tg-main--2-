@@ -1,6 +1,49 @@
-{% if vuelo.estado not in ["Pago Confirmado", "QR Enviados"] %}
-<form action="{{ url_for('borrar_vuelo') }}" method="post" onsubmit="return confirm('¿Borrar vuelo definitivamente?');">
-  <input type="hidden" name="id" value="{{ vuelo.id }}">
-  <button type="submit" class="btn-secondary">Borrar vuelo</button>
-</form>
-{% endif %}
+{% extends "base.html" %}
+
+{% block titulo %}Vuelo {{ vuelo.id }}{% endblock %}
+{% block subtitulo %}Detalles completos del vuelo.{% endblock %}
+
+{% block contenido %}
+<div class="glass card">
+  <h2>ID: {{ vuelo.id }}</h2>
+  
+  <div class="cards-row">
+    <div class="info-card">
+      <div class="info-card__label">Estado</div>
+      <div class="info-card__value">{{ vuelo.estado }}</div>
+    </div>
+    <div class="info-card">
+      <div class="info-card__label">Usuario</div>
+      <div class="info-card__value">@{{ vuelo.username }}</div>
+    </div>
+    <div class="info-card">
+      <div class="info-card__label">Monto</div>
+      <div class="info-card__value">{{ vuelo.monto or '-' }}</div>
+    </div>
+  </div>
+
+  <div class="content-body">
+    <h3>Detalles del vuelo:</h3>
+    <p>{{ vuelo.pedido_completo or '-' }}</p>
+    
+    <div class="inline-form" style="margin-top: 12px;">
+      <strong>Fecha:</strong> {{ vuelo.fecha }}<br>
+      <strong>Creado:</strong> {{ vuelo.created_at }}<br>
+      {% if vuelo.updated_at %}
+      <strong>Actualizado:</strong> {{ vuelo.updated_at }}
+      {% endif %}
+    </div>
+
+    {% if vuelo.estado not in ["Pago Confirmado", "QR Enviados"] %}
+    <form action="{{ url_for('borrar_vuelo') }}" method="post" style="margin-top: 20px;">
+      <input type="hidden" name="id" value="{{ vuelo.id }}">
+      <button type="submit" class="btn-secondary" onclick="return confirm('¿Borrar este vuelo definitivamente?')">🗑 Borrar vuelo</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+
+<div style="margin-top: 20px;">
+  <a href="{{ url_for('historial') }}" class="btn-link">← Volver al historial</a>
+</div>
+{% endblock %}

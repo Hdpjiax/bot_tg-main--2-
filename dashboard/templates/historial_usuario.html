@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+
+{% block titulo %}Historial @{{ username }}{% endblock %}
+{% block subtitulo %}Estadísticas y vuelos de este usuario.{% endblock %}
+
+{% block contenido %}
+<div class="glass card">
+  <div class="cards-row">
+    <div class="info-card info-card--blue">
+      <div class="info-card__label">Total vuelos</div>
+      <div class="info-card__value">{{ vuelos|length }}</div>
+    </div>
+    <div class="info-card info-card--green">
+      <div class="info-card__label">Pagos completados</div>
+      <div class="info-card__value">{{ pagos_confirmados }}</div>
+    </div>
+    <div class="info-card info-card--yellow">
+      <div class="info-card__label">Total recaudado</div>
+      <div class="info-card__value">${{ "%.2f"|format(total_pagado) }} MXN</div>
+    </div>
+  </div>
+
+  {% if vuelos %}
+  <table class="table table--compact">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Estado</th>
+        <th>Monto</th>
+        <th>Fecha</th>
+        <th>Creado</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for v in vuelos %}
+      <tr>
+        <td>{{ v.id }}</td>
+        <td>{{ v.estado }}</td>
+        <td>{{ v.monto or '-' }}</td>
+        <td>{{ v.fecha }}</td>
+        <td>{{ v.created_at }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="panel__empty">Este usuario no tiene vuelos registrados.</div>
+  {% endif %}
+</div>
+{% endblock %}
