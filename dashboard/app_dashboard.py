@@ -3,21 +3,19 @@ from datetime import datetime, timedelta
 import requests
 import json
 from collections import Counter
-import requests
-from google.auth.transport.requests import Request
-from google.oauth2.service_account import Credentials
 from flask import (
     Flask, render_template, request,
     redirect, url_for, flash
 )
 from supabase import create_client, Client
-from telegram import Bot, InputMediaPhoto
+from telegram import Bot
 
-# ----------------- CONFIG -----------------
 
+# ============= CONFIG =============
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 BOT_TOKEN = os.getenv("BOT_TOKEN")
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY") 
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 bot = Bot(token=BOT_TOKEN)
@@ -25,32 +23,66 @@ bot = Bot(token=BOT_TOKEN)
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "cambia_esto")
 
-def verificar_email_google_api(email: str) -> bool:
+
+# ============= VERIFICACIÓN DE EMAIL =============
+
+def verificar_email_gmail(email: str) -> bool:
     """
-    Verifica email usando Google Identity Toolkit API.
-    Requiere: pip install google-auth google-auth-oauthlib
+    Verifica si un email @gmail.com existe usando Google Identity Toolkit API.
+    
+    Retorna:
+    - True: El email existe en Gmail
+    - False: El email NO existe o hay error
     """
+    
+    # Solo para emails de Gmail
+    if not email.endswith("@gmail.com"):
+        return False
+    
+    if not GOOGLE_API_KEY:
+        app.logger.warning("GOOGLE_API_KEY no configurada en .env")
+        return False
+    
     try:
-        url = "https://identitytoolkit.googleapis.com/v3/relyingparty/verifyEmail"
+        # Endpoint correcto para verificar si el email está registrado
+        url = "https://identitytoolkit.googleapis.com/v3/relyingparty/createAuthUri"
+        
         payload = {
-            "email": email,
-            "returnSecureToken": False
+            "identifier": email,
+            "continueUri": "https://yourdomain.com/callback",
+            "openidIdentifiers": [email]
         }
-        # Necesitas API key de Google Cloud
-        api_key = os.getenv("AIzaSyB3MeYONY85TGbK94CX1bZuoQ-iwEHb8j4")
         
         response = requests.post(
-            f"{url}?key={api_key}",
+            f"{url}?key={GOOGLE_API_KEY}",
             json=payload,
             timeout=5
         )
         
         if response.status_code == 200:
-            return "error" not in response.json()
-        return False
+            data = response.json()
+            
+            # Si el email está registrado en Google
+            if data.get("registered"):
+                return True
+            
+            # Si hay proveedores de autenticación
+            if data.get("allProviders"):
+                return True
+            
+            return False
+        
+        else:
+            app.logger.error(f"Error Google API ({response.status_code}): {response.text}")
+            return False
+            
     except Exception as e:
-        app.logger.error(f"Error en verificación API Google: {e}")
+        app.logger.error(f"Error verificando email {email}: {str(e)}")
         return False
+
+
+# ============= FUNCIONES AUXILIARES =============
+
 def rango_proximos():
     hoy = datetime.utcnow().date()
     hasta = hoy + timedelta(days=5)
@@ -62,7 +94,8 @@ def enviar_mensaje(chat_id: int, texto: str):
     data = {"chat_id": chat_id, "text": texto}
     r = requests.post(url, data=data, timeout=10)
     r.raise_for_status()
-    
+
+
 def enviar_foto(chat_id: int, fileobj, caption: str = ""):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto"
     files = {"photo": (fileobj.filename, fileobj.stream, fileobj.mimetype)}
@@ -71,12 +104,12 @@ def enviar_foto(chat_id: int, fileobj, caption: str = ""):
     r.raise_for_status()
 
 
-
-# ----------------- MAIL GENERATOR -----------------
+# ============= MAIL GENERATOR =============
 
 @app.route("/mail-generator")
 def mail_generator():
     return render_template("mail_generator.html")
+
 
 @app.route("/accion/generar_email", methods=["POST"])
 def generar_email():
@@ -88,7 +121,6 @@ def generar_email():
         flash("Nombre y apellido son requeridos.", "error")
         return redirect(url_for("mail_generator"))
     
-    # Generar variantes de email
     variantes = []
     base_email = f"{nombre.lower()}.{apellido.lower()}{numero if numero else ''}"
     
@@ -101,25 +133,42 @@ def generar_email():
     ]
     
     for email in combinaciones:
-        existe = verificar_email_google_api(email)
+        # ✅ VERIFICAR si YA existe en BD ANTES de guardar
+        existe_en_bd = supabase.table("emails_generados").select("*").eq("email", email).execute()
         
-        # Guardar en Supabase
+        if existe_en_bd.data:
+            variantes.append({
+                "email": email,
+                "existe": None,
+                "estado": "⚠️ Ya registrado"
+            })
+            continue
+        
+        # Verificar con Google API
+        existe_en_google = verificar_email_gmail(email)
+        
+        # Guardar en Supabase (SIN duplicados)
         try:
             supabase.table("emails_generados").insert({
                 "email": email,
                 "nombre": nombre,
                 "apellido": apellido,
                 "numero": numero,
-                "existe_en_google": existe
+                "existe_en_google": existe_en_google
             }).execute()
+            
+            variantes.append({
+                "email": email,
+                "existe": existe_en_google,
+                "estado": "✅ Existe en Gmail" if existe_en_google else "❌ No existe"
+            })
         except Exception as e:
-            app.logger.error(f"Error guardando email {email}: {e}")
-        
-        variantes.append({
-            "email": email,
-            "existe": existe,
-            "estado": "✅ Existe" if existe else "❌ No existe"
-        })
+            app.logger.error(f"Error guardando email {email}: {str(e)}")
+            variantes.append({
+                "email": email,
+                "existe": None,
+                "estado": "❌ Error al guardar"
+            })
     
     return render_template(
         "mail_generator.html",
@@ -128,6 +177,7 @@ def generar_email():
         apellido=apellido,
         numero=numero
     )
+
 
 @app.route("/mail-generados")
 def mail_generados():
@@ -150,48 +200,8 @@ def mail_generados():
         no_existe_count=no_existe_count
     )
 
-# ----------------- GENERAL / ESTADÍSTICAS -----------------
-@app.route("/vuelo/<int:vuelo_id>")
-def detalle_vuelo(vuelo_id):
-    res = (
-        supabase.table("cotizaciones")
-        .select("*")
-        .eq("id", vuelo_id)
-        .single()
-        .execute()
-    )
-    if not res.data:
-        flash("Vuelo no encontrado.", "error")
-        return redirect(url_for("historial"))
 
-    vuelo = res.data
-    return render_template("detalle_vuelo.html", vuelo=vuelo)
-@app.route("/accion/borrar_vuelo", methods=["POST"])
-def borrar_vuelo():
-    v_id = request.form.get("id")
-    if not v_id:
-        flash("Falta ID de vuelo.", "error")
-        return redirect(url_for("historial"))
-
-    # Solo permitir borrar si no está pagado ni con QR
-    res = (
-        supabase.table("cotizaciones")
-        .select("estado")
-        .eq("id", v_id)
-        .single()
-        .execute()
-    )
-    if not res.data:
-        flash("Vuelo no encontrado.", "error")
-        return redirect(url_for("historial"))
-
-    if res.data["estado"] in ["Pago Confirmado", "QR Enviados"]:
-        flash("No se puede borrar un vuelo ya pagado o con QR.", "error")
-        return redirect(url_for("detalle_vuelo", vuelo_id=v_id))
-
-    supabase.table("cotizaciones").delete().eq("id", v_id).execute()
-    flash("Vuelo borrado correctamente.", "success")
-    return redirect(url_for("historial"))
+# ============= GENERAL / ESTADÍSTICAS =============
 
 @app.route("/")
 def general():
@@ -217,7 +227,7 @@ def general():
     )
     total_recaudado = sum(float(r["monto"]) for r in res_total if r["monto"])
 
-  # urgentes hoy y mañana
+    # urgentes hoy y mañana
     urgentes = (
         supabase.table("cotizaciones")
         .select("*")
@@ -228,7 +238,7 @@ def general():
         .order("created_at", desc=True)
         .execute()
         .data
-    )  
+    )
 
     return render_template(
         "general.html",
@@ -238,7 +248,54 @@ def general():
         hoy=hoy,
     )
 
-# ----------------- POR COTIZAR -----------------
+
+@app.route("/vuelo/<int:vuelo_id>")
+def detalle_vuelo(vuelo_id):
+    res = (
+        supabase.table("cotizaciones")
+        .select("*")
+        .eq("id", vuelo_id)
+        .single()
+        .execute()
+    )
+    if not res.data:
+        flash("Vuelo no encontrado.", "error")
+        return redirect(url_for("historial"))
+
+    vuelo = res.data
+    return render_template("detalle_vuelo.html", vuelo=vuelo)
+
+
+@app.route("/accion/borrar_vuelo", methods=["POST"])
+def borrar_vuelo():
+    v_id = request.form.get("id")
+
+    if not v_id:
+        flash("Falta ID de vuelo.", "error")
+        return redirect(url_for("historial"))
+
+    # Solo permitir borrar si no está pagado ni con QR
+    res = (
+        supabase.table("cotizaciones")
+        .select("estado")
+        .eq("id", v_id)
+        .single()
+        .execute()
+    )
+    if not res.data:
+        flash("Vuelo no encontrado.", "error")
+        return redirect(url_for("historial"))
+
+    if res.data["estado"] in ["Pago Confirmado", "QR Enviados"]:
+        flash("No se puede borrar un vuelo ya pagado o con QR.", "error")
+        return redirect(url_for("detalle_vuelo", vuelo_id=v_id))
+
+    supabase.table("cotizaciones").delete().eq("id", v_id).execute()
+    flash("Vuelo borrado correctamente.", "success")
+    return redirect(url_for("historial"))
+
+
+# ============= POR COTIZAR =============
 
 @app.route("/por-cotizar")
 def por_cotizar():
@@ -278,7 +335,7 @@ def accion_cotizar():
         .update({"monto": monto_cobrar, "estado": "Cotizado"})
         .eq("id", v_id)
         .execute()
-    )  
+    )
 
     if not res.data:
         flash("No se encontró el vuelo.", "error")
@@ -309,8 +366,7 @@ def accion_cotizar():
     return redirect(url_for("por_cotizar"))
 
 
-
-# ----------------- VALIDAR PAGOS -----------------
+# ============= VALIDAR PAGOS =============
 
 @app.route("/validar-pagos")
 def validar_pagos():
@@ -366,7 +422,8 @@ def accion_confirmar_pago():
 
     return redirect(url_for("validar_pagos"))
 
-# ----------------- POR ENVIAR QR -----------------
+
+# ============= POR ENVIAR QR =============
 
 @app.route("/por-enviar-qr")
 def por_enviar_qr():
@@ -380,7 +437,6 @@ def por_enviar_qr():
     )
     return render_template("por_enviar_qr.html", vuelos=pendientes)
 
-# ----------------- POR ENVIAR QR -----------------
 
 @app.route("/accion/enviar_qr", methods=["POST"])
 def accion_enviar_qr():
@@ -448,7 +504,8 @@ def accion_enviar_qr():
 
     return redirect(url_for("por_enviar_qr"))
 
-# ----------------- PRÓXIMOS VUELOS -----------------
+
+# ============= PRÓXIMOS VUELOS =============
 
 @app.route("/proximos-vuelos")
 def proximos_vuelos():
@@ -465,8 +522,7 @@ def proximos_vuelos():
     return render_template("proximos_vuelos.html", vuelos=proximos)
 
 
-# ----------------- HISTORIAL -----------------
-# ----------------- HISTORIAL GENERAL -----------------
+# ============= HISTORIAL =============
 
 @app.route("/historial")
 def historial():
@@ -480,7 +536,7 @@ def historial():
     )
     return render_template("historial.html", vuelos=vuelos)
 
-# ----------------- HISTORIAL POR USUARIO -----------------
+
 @app.route("/historial-usuario/<username>")
 def historial_usuario(username):
     vuelos = (
@@ -511,7 +567,7 @@ def historial_usuario(username):
     )
 
 
-# ----------------- MAIN -----------------
+# ============= MAIN =============
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
