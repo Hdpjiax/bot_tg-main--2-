@@ -325,10 +325,10 @@ class VerificadorConSelenium:
 email_model = EmailGenerado(supabase)
 
 # Inicializar Selenium
-verificador = VerificadorConSelenium(supabase)
+#verificador = VerificadorConSelenium(supabase)
 
 # OPCIÓN 1: Ventana VISIBLE (recomendado para probar)
-verificador.iniciar_verificacion_automatica(mostrar_ventana=True)
+#verificador.iniciar_verificacion_automatica(mostrar_ventana=True)
 
 # OPCIÓN 2: Descomenta esto si quieres ventana OCULTA
 # verificador.iniciar_verificacion_automatica(mostrar_ventana=False)
