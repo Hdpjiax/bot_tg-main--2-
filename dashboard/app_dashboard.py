@@ -728,21 +728,34 @@ def historial_usuario(username):
 # RUTAS - SPAM TELEGRAM
 # ============================================================================
 
+spam_status = {
+    "ejecutando": False,
+    "mensaje": "",
+    "progreso": 0,
+    "total": 0,
+    "log": []
+}
+
 @app.route('/spam-telegram', methods=['GET'])
 def spam_telegram_page():
     """Página del spam"""
-    stats = email_model.obtener_estadisticas()
     return render_template(
         'spam_telegram.html',
-        total=stats['total'],
-        existe_count=stats['existe_count'],
-        no_existe_count=stats['no_existe_count']
+        status=spam_status
     )
+
+
+@app.route('/api/spam-status', methods=['GET'])
+def api_spam_status():
+    """Retorna el estado actual del spam en tiempo real"""
+    return jsonify(spam_status)
 
 
 @app.route('/accion/spam-tg', methods=['POST'])
 def accion_spam_tg():
     """Ejecuta spam en Telegram"""
+    global spam_status
+    
     try:
         enlaces = request.form.get('enlaces', '').strip().split('\n')
         mensaje = request.form.get('mensaje', '').strip()
@@ -753,16 +766,13 @@ def accion_spam_tg():
         enlaces = [e.strip() for e in enlaces if e.strip()]
         
         if not enlaces or not mensaje:
-            flash("Necesitas enlaces y mensaje", "error")
-            return redirect(url_for('spam_telegram_page'))
+            return jsonify({"success": False, "error": "Necesitas enlaces y mensaje"}), 400
         
         if repeticiones > 20:
-            flash("Máximo 20 repeticiones", "error")
-            return redirect(url_for('spam_telegram_page'))
+            return jsonify({"success": False, "error": "Máximo 20 repeticiones"}), 400
         
         if delay < 1:
-            flash("Mínimo 1 segundo de delay", "error")
-            return redirect(url_for('spam_telegram_page'))
+            return jsonify({"success": False, "error": "Mínimo 1 segundo de delay"}), 400
         
         # Obtener credenciales de Telegram
         TG_API_ID = os.getenv('TG_API_ID')
@@ -770,19 +780,36 @@ def accion_spam_tg():
         TG_PHONE = os.getenv('TG_PHONE')
         
         if not all([TG_API_ID, TG_API_HASH, TG_PHONE]):
-            flash("Faltan credenciales de Telegram en .env", "error")
-            return redirect(url_for('spam_telegram_page'))
+            return jsonify({"success": False, "error": "Faltan credenciales de Telegram en .env"}), 400
+        
+        # Resetear estado
+        spam_status = {
+            "ejecutando": True,
+            "mensaje": f"Iniciando spam en {len(enlaces)} grupos...",
+            "progreso": 0,
+            "total": len(enlaces),
+            "log": [],
+            "error": None
+        }
         
         # Ejecutar en background
         def ejecutar_spam():
+            global spam_status
+            
             async def main():
+                global spam_status
+                
                 spam = SpamTelegram(
                     api_id=int(TG_API_ID),
                     api_hash=TG_API_HASH,
                     phone=TG_PHONE
                 )
                 
+                # Conectar
                 if await spam.conectar():
+                    spam_status["log"].append("✅ Conectado a Telegram")
+                    
+                    # Ejecutar spam
                     await spam.spam_multiples_grupos(
                         enlaces,
                         mensaje,
@@ -790,22 +817,45 @@ def accion_spam_tg():
                         delay=delay,
                         delay_entre_grupos=5
                     )
+                    
+                    # Actualizar estado final
+                    spam_status["ejecutando"] = False
+                    spam_status["mensaje"] = "✅ SPAM COMPLETADO"
+                    spam_status["stats"] = spam.stats
+                    spam_status["log"].append(f"\n✅ FINAL - Enviados: {spam.stats['enviados']}, Fallidos: {spam.stats['fallidos']}")
+                    
                     await spam.desconectar()
                 else:
-                    print("❌ No se pudo conectar a Telegram")
+                    spam_status["ejecutando"] = False
+                    spam_status["error"] = "No se pudo conectar a Telegram"
+                    spam_status["log"].append("❌ No se pudo conectar a Telegram")
             
             asyncio.run(main())
         
-        # Ejecutar en thread para no bloquear
+        # Ejecutar en thread
         thread = threading.Thread(target=ejecutar_spam, daemon=True)
         thread.start()
         
-        flash(f"✅ Spam iniciado en {len(enlaces)} grupos", "success")
-        return redirect(url_for('spam_telegram_page'))
+        return jsonify({"success": True, "mensaje": f"Spam iniciado en {len(enlaces)} grupos"})
     
     except Exception as e:
-        flash(f"Error: {str(e)}", "error")
-        return redirect(url_for('spam_telegram_page'))
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route('/accion/spam-agregar-log', methods=['POST'])
+def agregar_log():
+    """Agregar mensaje al log (usado por spam_telegram.py)"""
+    global spam_status
+    
+    data = request.get_json()
+    mensaje = data.get('mensaje', '')
+    
+    if mensaje:
+        spam_status["log"].append(mensaje)
+        spam_status["progreso"] = data.get('progreso', spam_status['progreso'])
+    
+    return jsonify({"success": True})
+
 
 # ============================================================================
 # MAIN

@@ -7,102 +7,138 @@
 <div class="glass card">
   <h3>📢 Spam en Grupos Telegram</h3>
   
-  <form action="{{ url_for('accion_spam_tg') }}" method="post" class="form-spam">
-    
-    <!-- MENSAJE -->
-    <div class="form-group">
-      <label for="mensaje" class="form-label">📝 Mensaje a Enviar:</label>
-      <textarea 
-        name="mensaje" 
-        id="mensaje" 
-        class="form-control" 
-        placeholder="Escribe el mensaje que deseas enviar..."
-        rows="4"
-        required
-      ></textarea>
-    </div>
-
-    <!-- ENLACES -->
-    <div class="form-group">
-      <label for="enlaces" class="form-label">🔗 Enlaces de Grupos (uno por línea):</label>
-      <textarea 
-        name="enlaces" 
-        id="enlaces" 
-        class="form-control" 
-        placeholder="https://t.me/groupname&#10;https://t.me/joinchat/ABC123&#10;t.me/+123456789"
-        rows="6"
-        required
-      ></textarea>
-      <small style="color: var(--text-muted); margin-top: 8px; display: block;">
-        ℹ️ Soporta: https://t.me/groupname, t.me/joinchat/ABC123, t.me/+números
-      </small>
-    </div>
-
-    <!-- OPCIONES -->
-    <div class="options-row">
+  <!-- FORMULARIO (se oculta cuando se ejecuta) -->
+  <div id="form-container">
+    <form id="spam-form" class="form-spam">
+      
+      <!-- MENSAJE -->
       <div class="form-group">
-        <label for="repeticiones" class="form-label">🔁 Repeticiones por grupo:</label>
-        <input 
-          type="number" 
-          name="repeticiones" 
-          id="repeticiones" 
+        <label for="mensaje" class="form-label">📝 Mensaje a Enviar:</label>
+        <textarea 
+          name="mensaje" 
+          id="mensaje" 
           class="form-control" 
-          value="5" 
-          min="1" 
-          max="20"
+          placeholder="Escribe el mensaje que deseas enviar..."
+          rows="4"
           required
-        >
-        <small style="color: var(--text-muted);">1-20 mensajes</small>
+        ></textarea>
       </div>
 
+      <!-- ENLACES -->
       <div class="form-group">
-        <label for="delay" class="form-label">⏱️ Delay entre mensajes:</label>
-        <input 
-          type="number" 
-          name="delay" 
-          id="delay" 
+        <label for="enlaces" class="form-label">🔗 Enlaces de Grupos (uno por línea):</label>
+        <textarea 
+          name="enlaces" 
+          id="enlaces" 
           class="form-control" 
-          value="2" 
-          min="1" 
-          max="30"
+          placeholder="https://t.me/groupname&#10;https://t.me/joinchat/ABC123&#10;t.me/+123456789"
+          rows="6"
           required
-        >
-        <small style="color: var(--text-muted);">segundos</small>
+        ></textarea>
+        <small style="color: var(--text-muted); margin-top: 8px; display: block;">
+          ℹ️ Soporta: https://t.me/groupname, t.me/joinchat/ABC123, t.me/+números
+        </small>
+      </div>
+
+      <!-- OPCIONES -->
+      <div class="options-row">
+        <div class="form-group">
+          <label for="repeticiones" class="form-label">🔁 Repeticiones por grupo:</label>
+          <input 
+            type="number" 
+            name="repeticiones" 
+            id="repeticiones" 
+            class="form-control" 
+            value="5" 
+            min="1" 
+            max="20"
+            required
+          >
+          <small style="color: var(--text-muted);">1-20 mensajes</small>
+        </div>
+
+        <div class="form-group">
+          <label for="delay" class="form-label">⏱️ Delay entre mensajes:</label>
+          <input 
+            type="number" 
+            name="delay" 
+            id="delay" 
+            class="form-control" 
+            value="2" 
+            min="1" 
+            max="30"
+            required
+          >
+          <small style="color: var(--text-muted);">segundos</small>
+        </div>
+      </div>
+
+      <!-- INFO -->
+      <div class="info-box">
+        <h4>⚠️ Información Importante:</h4>
+        <ul>
+          <li>✅ Máximo 60 mensajes por hora</li>
+          <li>✅ Se detiene automáticamente si eres baneado</li>
+          <li>✅ Respeta delays para evitar bloqueos</li>
+          <li>✅ Primera vez: Necesitarás código de Telegram</li>
+          <li>❌ No intentes enviar spam ofensivo</li>
+          <li>❌ Respeta las reglas de cada grupo</li>
+        </ul>
+      </div>
+
+      <button type="button" class="btn-submit" onclick="iniciarSpam()">🚀 Iniciar Spam</button>
+    </form>
+  </div>
+
+  <!-- MONITOR EN VIVO (se muestra cuando se ejecuta) -->
+  <div id="monitor-container" style="display: none;">
+    <div class="monitor-header">
+      <h3>📡 Monitor en Vivo</h3>
+      <span id="status-badge" class="status-executing">🔴 EJECUTANDO</span>
+    </div>
+
+    <!-- BARRA DE PROGRESO -->
+    <div class="progress-container">
+      <div class="progress-bar">
+        <div id="progress-fill" class="progress-fill" style="width: 0%"></div>
+      </div>
+      <div class="progress-text">
+        <span id="progress-label">0/0 grupos</span>
+        <span id="progress-percent">0%</span>
       </div>
     </div>
 
-    <!-- INFO -->
-    <div class="info-box">
-      <h4>⚠️ Información Importante:</h4>
-      <ul>
-        <li>✅ Máximo 60 mensajes por hora</li>
-        <li>✅ Se detiene automáticamente si eres baneado</li>
-        <li>✅ Respeta delays para evitar bloqueos</li>
-        <li>❌ No intentes enviar spam ofensivo</li>
-        <li>❌ Respeta las reglas de cada grupo</li>
-      </ul>
+    <!-- LOG EN VIVO -->
+    <div class="log-container">
+      <h4>📋 Log de Eventos:</h4>
+      <div id="log-output" class="log-output"></div>
     </div>
 
-    <button type="submit" class="btn-submit">🚀 Iniciar Spam</button>
-  </form>
+    <!-- ESTADÍSTICAS -->
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-label">✅ Enviados</div>
+        <div id="stat-enviados" class="stat-value">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">❌ Fallidos</div>
+        <div id="stat-fallidos" class="stat-value">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">🚫 Baneados</div>
+        <div id="stat-baneados" class="stat-value">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">⛔ Sin Permisos</div>
+        <div id="stat-permisos" class="stat-value">0</div>
+      </div>
+    </div>
 
-  <!-- ESTADÍSTICAS -->
-  {% if total > 0 %}
-  <div class="cards-row" style="margin-top: 30px;">
-    <div class="info-card info-card--blue">
-      <div class="info-card__label">Total Generados</div>
-      <div class="info-card__value">{{ total }}</div>
-    </div>
-    <div class="info-card info-card--green">
-      <div class="info-card__label">Verificados</div>
-      <div class="info-card__value">{{ existe_count }}</div>
-    </div>
-    <div class="info-card info-card--yellow">
-      <div class="info-card__label">Sin Verificar</div>
-      <div class="info-card__value">{{ no_existe_count }}</div>
+    <!-- BOTONES DE CONTROL -->
+    <div class="control-buttons">
+      <button type="button" class="btn-reset" onclick="reiniciar()">🔄 Nueva Ejecución</button>
     </div>
   </div>
-  {% endif %}
 
 </div>
 
@@ -187,12 +223,306 @@
   box-shadow: 0 12px 24px rgba(0, 0, 0, 0.3);
 }
 
+/* MONITOR */
+.monitor-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 15px;
+  border-bottom: 2px solid var(--border);
+  margin-bottom: 20px;
+}
+
+.monitor-header h3 {
+  margin: 0;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.status-executing {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+  animation: pulse 1.5s infinite;
+}
+
+.status-completed {
+  background: rgba(34, 197, 94, 0.2);
+  color: #22c55e;
+}
+
+.status-error {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* PROGRESO */
+.progress-container {
+  margin-bottom: 20px;
+}
+
+.progress-bar {
+  width: 100%;
+  height: 30px;
+  background: rgba(34, 197, 94, 0.1);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  border-radius: 999px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), #22c55e);
+  transition: width 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #022c22;
+  font-weight: 600;
+  font-size: 0.8rem;
+}
+
+.progress-text {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+/* LOG */
+.log-container {
+  margin-bottom: 20px;
+}
+
+.log-container h4 {
+  margin-top: 0;
+  margin-bottom: 10px;
+}
+
+.log-output {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 15px;
+  font-family: monospace;
+  font-size: 0.85rem;
+  height: 300px;
+  overflow-y: auto;
+  color: #22c55e;
+  line-height: 1.5;
+}
+
+.log-output::-webkit-scrollbar {
+  width: 6px;
+}
+
+.log-output::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 10px;
+}
+
+.log-output::-webkit-scrollbar-thumb {
+  background: var(--accent);
+  border-radius: 10px;
+}
+
+/* ESTADÍSTICAS */
+.stats-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.stat-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 15px;
+  text-align: center;
+}
+
+.stat-label {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.stat-value {
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+/* BOTONES DE CONTROL */
+.control-buttons {
+  display: flex;
+  gap: 10px;
+}
+
+.btn-reset {
+  flex: 1;
+  padding: 12px 20px;
+  background: var(--accent);
+  color: #022c22;
+  border: none;
+  border-radius: 999px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.btn-reset:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.3);
+}
+
 @media (max-width: 768px) {
   .options-row {
     grid-template-columns: 1fr;
   }
+
+  .stats-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .monitor-header {
+    flex-direction: column;
+    gap: 10px;
+    align-items: flex-start;
+  }
 }
 </style>
+
+<script>
+let intervalId = null;
+
+function iniciarSpam() {
+  const mensaje = document.getElementById('mensaje').value.trim();
+  const enlaces = document.getElementById('enlaces').value.trim();
+  const repeticiones = document.getElementById('repeticiones').value;
+  const delay = document.getElementById('delay').value;
+
+  if (!mensaje || !enlaces) {
+    alert('⚠️ Completa todos los campos');
+    return;
+  }
+
+  // Validar
+  if (repeticiones < 1 || repeticiones > 20) {
+    alert('❌ Repeticiones entre 1 y 20');
+    return;
+  }
+
+  if (delay < 1) {
+    alert('❌ Delay mínimo 1 segundo');
+    return;
+  }
+
+  // Mostrar monitor
+  document.getElementById('form-container').style.display = 'none';
+  document.getElementById('monitor-container').style.display = 'block';
+  document.getElementById('log-output').innerHTML = '';
+
+  // Agregar primer mensaje
+  agregarLog('🚀 Iniciando spam...');
+
+  // Enviar formulario
+  const formData = new FormData();
+  formData.append('mensaje', mensaje);
+  formData.append('enlaces', enlaces);
+  formData.append('repeticiones', repeticiones);
+  formData.append('delay', delay);
+
+  fetch('/accion/spam-tg', {
+    method: 'POST',
+    body: formData
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.success) {
+      agregarLog('✅ Spam iniciado en background');
+      
+      // Actualizar estado cada 1 segundo
+      intervalId = setInterval(actualizarEstado, 1000);
+    } else {
+      agregarLog(`❌ Error: ${data.error}`);
+      document.getElementById('status-badge').className = 'status-badge status-error';
+      document.getElementById('status-badge').textContent = '❌ ERROR';
+    }
+  })
+  .catch(err => {
+    agregarLog(`❌ Error de conexión: ${err}`);
+    document.getElementById('status-badge').className = 'status-badge status-error';
+    document.getElementById('status-badge').textContent = '❌ ERROR';
+  });
+}
+
+function agregarLog(mensaje) {
+  const logOutput = document.getElementById('log-output');
+  const timestamp = new Date().toLocaleTimeString();
+  const linea = document.createElement('div');
+  linea.textContent = `[${timestamp}] ${mensaje}`;
+  logOutput.appendChild(linea);
+  logOutput.scrollTop = logOutput.scrollHeight;
+}
+
+function actualizarEstado() {
+  fetch('/api/spam-status')
+    .then(r => r.json())
+    .then(data => {
+      // Actualizar progreso
+      const progreso = data.total > 0 ? (data.progreso / data.total) * 100 : 0;
+      document.getElementById('progress-fill').style.width = progreso + '%';
+      document.getElementById('progress-label').textContent = `${data.progreso}/${data.total} grupos`;
+      document.getElementById('progress-percent').textContent = Math.round(progreso) + '%';
+
+      // Actualizar estadísticas
+      if (data.stats) {
+        document.getElementById('stat-enviados').textContent = data.stats.enviados || 0;
+        document.getElementById('stat-fallidos').textContent = data.stats.fallidos || 0;
+        document.getElementById('stat-baneados').textContent = data.stats.baneados || 0;
+        document.getElementById('stat-permisos').textContent = data.stats.sin_permisos || 0;
+      }
+
+      // Actualizar logs
+      if (data.log && data.log.length > 0) {
+        const logOutput = document.getElementById('log-output');
+        // Solo agregar logs nuevos
+        const currentLogs = logOutput.children.length;
+        for (let i = currentLogs; i < data.log.length; i++) {
+          const linea = document.createElement('div');
+          linea.textContent = data.log[i];
+          logOutput.appendChild(linea);
+        }
+        logOutput.scrollTop = logOutput.scrollHeight;
+      }
+
+      // Si terminó
+      if (!data.ejecutando) {
+        clearInterval(intervalId);
+        document.getElementById('status-badge').className = data.error ? 'status-badge status-error' : 'status-badge status-completed';
+        document.getElementById('status-badge').textContent = data.error ? '❌ ERROR' : '✅ COMPLETADO';
+        agregarLog(data.error ? `❌ ${data.error}` : '✅ SPAM COMPLETADO');
+      }
+    });
+}
+
+function reiniciar() {
+  location.reload();
+}
+</script>
 
 <!-- Botones de navegación -->
 <div style="margin-top: 20px; display: flex; gap: 10px;">
