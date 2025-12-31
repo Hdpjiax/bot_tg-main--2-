@@ -408,136 +408,288 @@ def historial_usuario(username):
         total_pagado=total_pagado,
         pagos_confirmados=pagos_confirmados,
     )
-# FUNCIÓN: Generar variantes de email
+# ============================================================================
+# MAIL GENERATOR - FUNCIONES PARA app_dashboard.py
+# ============================================================================
+# Copia TODO esto y pégalo al FINAL de tu app_dashboard.py
+
+from flask import render_template, request, jsonify
+from datetime import datetime
+import itertools
+import requests
+from urllib.parse import quote
+
+# ============================================================================
+# MODELO: EmailGenerado (Supabase)
 # ============================================================================
 
-# ============= MAIL GENERATOR =============
-
-from urllib.parse import urlencode
-
-def generar_variantes_email(nombre: str, apellido: str, numero: str = "") -> list:
-    """Genera variantes de emails basadas en nombre y apellido"""
-    variantes = []
-    opciones = [
-        f"{nombre}.{apellido}",
-        f"{nombre}{apellido}",
-        f"{nombre[0]}{apellido}",
-        f"{nombre}{apellido[0]}",
-        f"{apellido}.{nombre}",
-    ]
+class EmailGenerado:
+    """Modelo para emails generados en la BD"""
     
+    def __init__(self, supabase_client):
+        self.db = supabase_client
+        self.table = "emails_generados"
+        self.ensure_table_exists()
+    
+    def ensure_table_exists(self):
+        """Crea la tabla si no existe"""
+        try:
+            # Intenta hacer una consulta para verificar que existe
+            self.db.table(self.table).select("id").limit(1).execute()
+        except:
+            # Si no existe, intenta crearla
+            try:
+                # Esta es una creación manual - necesitas hacerlo en Supabase UI
+                # CREATE TABLE emails_generados (
+                #   id BIGSERIAL PRIMARY KEY,
+                #   email TEXT UNIQUE NOT NULL,
+                #   nombre TEXT,
+                #   apellido TEXT,
+                #   existe_en_google BOOLEAN,
+                #   verificado_en TIMESTAMP,
+                #   created_at TIMESTAMP DEFAULT NOW()
+                # );
+                pass
+            except:
+                pass
+    
+    def crear(self, email, nombre, apellido, existe=None):
+        """Crea un nuevo email en la BD"""
+        try:
+            data = {
+                "email": email,
+                "nombre": nombre,
+                "apellido": apellido,
+                "existe_en_google": existe,
+                "verificado_en": datetime.now().isoformat() if existe is not None else None,
+                "created_at": datetime.now().isoformat()
+            }
+            response = self.db.table(self.table).insert(data).execute()
+            return response.data[0] if response.data else None
+        except Exception as e:
+            print(f"Error creando email: {e}")
+            return None
+    
+    def actualizar(self, email, existe):
+        """Actualiza el estado de un email"""
+        try:
+            data = {
+                "existe_en_google": existe,
+                "verificado_en": datetime.now().isoformat()
+            }
+            response = self.db.table(self.table).update(data).eq("email", email).execute()
+            return response.data[0] if response.data else None
+        except Exception as e:
+            print(f"Error actualizando email: {e}")
+            return None
+    
+    def obtener_todos(self):
+        """Obtiene todos los emails"""
+        try:
+            response = self.db.table(self.table).select("*").order("created_at", desc=True).execute()
+            return response.data
+        except Exception as e:
+            print(f"Error obteniendo emails: {e}")
+            return []
+    
+    def obtener_estadisticas(self):
+        """Obtiene estadísticas de emails"""
+        try:
+            all_emails = self.obtener_todos()
+            total = len(all_emails)
+            existe_count = len([e for e in all_emails if e.get("existe_en_google") == True])
+            no_existe_count = len([e for e in all_emails if e.get("existe_en_google") == False])
+            return {
+                "total": total,
+                "existe_count": existe_count,
+                "no_existe_count": no_existe_count
+            }
+        except:
+            return {"total": 0, "existe_count": 0, "no_existe_count": 0}
+
+
+# ============================================================================
+# GENERADOR DE VARIANTES
+# ============================================================================
+
+def generar_variantes(nombre, apellido, numero=""):
+    """
+    Genera variantes de emails basadas en nombre y apellido
+    
+    Ejemplos:
+    - juan perez → juan.perez, juanperez, jp, j.perez, etc.
+    """
+    nombre = nombre.lower().strip()
+    apellido = apellido.lower().strip()
+    numero = numero.strip() if numero else ""
+    
+    variantes = set()
+    
+    # Iniciales
+    iniciales = nombre[0] + apellido[0]
+    
+    # Variantes básicas
+    variantes.add(f"{nombre}.{apellido}")          # juan.perez
+    variantes.add(f"{nombre}{apellido}")           # juanperez
+    variantes.add(f"{apellido}.{nombre}")          # perez.juan
+    variantes.add(f"{apellido}{nombre}")           # perezjuan
+    variantes.add(iniciales)                       # jp
+    variantes.add(f"{nombre[0]}.{apellido}")       # j.perez
+    variantes.add(f"{apellido}.{nombre[0]}")       # perez.j
+    
+    # Con número
     if numero:
-        opciones.extend([
-            f"{nombre}.{apellido}{numero}",
-            f"{nombre}{apellido}{numero}",
-        ])
+        variantes.add(f"{nombre}{numero}")         # juan123
+        variantes.add(f"{apellido}{numero}")       # perez123
+        variantes.add(f"{nombre}.{numero}")        # juan.123
+        variantes.add(f"{nombre}{apellido}{numero}") # juanperez123
     
-    for opt in opciones:
-        email = f"{opt}@gmail.com"
-        if email not in [v['email'] for v in variantes]:
-            variantes.append({
-                'email': email,
-                'estado': 'pendiente',
-                'existe': None
-            })
+    # Agregar dominio
+    variantes_gmail = [f"{v}@gmail.com" for v in variantes]
     
-    return variantes
+    return sorted(list(variantes_gmail))
 
 
-@app.route("/mail-generator")
-def mail_generator():
-    return render_template("mail_generator.html")
+# ============================================================================
+# VERIFICACIÓN EN GOOGLE
+# ============================================================================
+
+def generar_url_verificacion_google(email):
+    """
+    Genera la URL para verificar un email en Google
+    Usa Google Account Recovery sin necesidad de contraseña
+    """
+    # Opción 1: Google Account Recovery (recomendado)
+    email_encoded = quote(email.split('@')[0])  # Solo la parte local
+    url = f"https://accounts.google.com/signin/recovery?email={email_encoded}"
+    
+    return url
 
 
-@app.route("/generar_email", methods=["POST"])
-def generar_email():
-    nombre = request.form.get("nombre", "").strip().lower()
-    apellido = request.form.get("apellido", "").strip().lower()
-    numero = request.form.get("numero", "").strip()
-    
-    if not nombre or not apellido:
-        flash("Nombre y apellido son requeridos.", "error")
-        return redirect(url_for("mail_generator"))
-    
-    variantes = generar_variantes_email(nombre, apellido, numero)
-    
-    return render_template("mail_generator.html", variantes=variantes, 
-                          nombre=nombre, apellido=apellido)
+# ============================================================================
+# RUTAS FLASK
+# ============================================================================
 
-
-@app.route("/verificar-email-gmail/<email>")
-def verificar_email_gmail(email):
-    recovery_url = "https://accounts.google.com/signin/recovery"
-    params = {'email': email, 'hl': 'es'}
-    full_url = f"{recovery_url}?{urlencode(params)}"
+def register_mail_generator_routes(app, supabase_client):
+    """Registra todas las rutas del Mail Generator"""
     
-    return {'url': full_url, 'email': email}
-
-
-@app.route("/guardar-verificacion-email", methods=["POST"])
-def guardar_verificacion_email():
-    data = request.get_json()
-    email = data.get('email')
-    existe = data.get('existe')
-    nombre = data.get('nombre')
-    apellido = data.get('apellido')
-    numero = data.get('numero', '')
+    email_model = EmailGenerado(supabase_client)
     
-    if not email:
-        return {'error': 'Email requerido'}, 400
-    
-    try:
-        record = {
-            'email': email,
-            'nombre': nombre,
-            'apellido': apellido,
-            'numero': numero if numero else None,
-            'existe_en_goo': existe,
-            'verificado_en': datetime.utcnow().isoformat()
-        }
+    # ────────────────────────────────────────────────────────────────────
+    # RUTA: GET /mail-generator
+    # ────────────────────────────────────────────────────────────────────
+    @app.route('/mail-generator', methods=['GET'])
+    def mail_generator():
+        """Página principal del generador"""
+        variantes = request.args.get('variantes')
+        nombre = request.args.get('nombre', '')
+        apellido = request.args.get('apellido', '')
         
-        # Verificar si existe
-        res_exist = supabase.table("emails_generados").select("id").eq("email", email).execute()
-        
-        if res_exist.data:
-            supabase.table("emails_generados").update(record).eq("email", email).execute()
+        # Si viene con parámetros, mostrar variantes
+        if variantes:
+            variantes_list = variantes.split(',')
+            variantes_data = [
+                {
+                    "email": v,
+                    "existe": None  # Pendiente de verificar
+                }
+                for v in variantes_list
+            ]
         else:
-            supabase.table("emails_generados").insert(record).execute()
-        
-        return {'success': True, 'message': f'Email {email} guardado'}
-    
-    except Exception as e:
-        app.logger.error(f"Error al guardar: {e}")
-        return {'error': str(e)}, 500
-
-
-@app.route("/mail-generados")
-def mail_generados():
-    try:
-        emails = (
-            supabase.table("emails_generados")
-            .select("*")
-            .order("verificado_en", desc=True)
-            .execute()
-            .data
-        )
-        
-        total = len(emails) if emails else 0
-        existe_count = sum(1 for e in emails if e.get('existe_en_goo')) if emails else 0
-        no_existe_count = total - existe_count
+            variantes_data = None
         
         return render_template(
-            "mail_generados.html",
-            emails=emails or [],
-            total=total,
-            existe_count=existe_count,
-            no_existe_count=no_existe_count
+            'mail_generator.html',
+            variantes=variantes_data,
+            nombre=nombre,
+            apellido=apellido
         )
     
-    except Exception as e:
-        app.logger.error(f"Error: {e}")
-        flash("Error al cargar emails.", "error")
-        return redirect(url_for("mail_generator"))
+    # ────────────────────────────────────────────────────────────────────
+    # RUTA: POST /generar_email
+    # ────────────────────────────────────────────────────────────────────
+    @app.route('/generar_email', methods=['POST'])
+    def generar_email():
+        """Genera variantes de emails"""
+        nombre = request.form.get('nombre', '').strip()
+        apellido = request.form.get('apellido', '').strip()
+        numero = request.form.get('numero', '').strip()
+        
+        if not nombre or not apellido:
+            return render_template(
+                'mail_generator.html',
+                variantes=None,
+                error="Nombre y apellido son requeridos"
+            )
+        
+        # Generar variantes
+        variantes = generar_variantes(nombre, apellido, numero)
+        
+        # Crear registros en BD
+        variantes_data = []
+        for email in variantes:
+            email_obj = email_model.crear(email, nombre, apellido)
+            variantes_data.append({
+                "email": email,
+                "existe": None  # Pendiente
+            })
+        
+        # Redirigir a la página con las variantes
+        variantes_str = ','.join(variantes)
+        return render_template(
+            'mail_generator.html',
+            variantes=variantes_data,
+            nombre=nombre,
+            apellido=apellido
+        )
+    
+    # ────────────────────────────────────────────────────────────────────
+    # RUTA: GET /verificar-email-gmail/{email}
+    # ────────────────────────────────────────────────────────────────────
+    @app.route('/verificar-email-gmail/<email>', methods=['GET'])
+    def verificar_email_gmail(email):
+        """Retorna la URL para verificar en Google"""
+        url = generar_url_verificacion_google(email)
+        return jsonify({"url": url})
+    
+    # ────────────────────────────────────────────────────────────────────
+    # RUTA: POST /guardar-verificacion-email
+    # ────────────────────────────────────────────────────────────────────
+    @app.route('/guardar-verificacion-email', methods=['POST'])
+    def guardar_verificacion_email():
+        """Guarda el resultado de la verificación"""
+        data = request.get_json()
+        
+        email = data.get('email', '').strip()
+        existe = data.get('existe')
+        nombre = data.get('nombre', '').strip()
+        apellido = data.get('apellido', '').strip()
+        
+        if not email or existe is None:
+            return jsonify({"success": False, "error": "Datos incompletos"}), 400
+        
+        # Actualizar en BD
+        email_model.actualizar(email, existe)
+        
+        return jsonify({"success": True, "message": "Email guardado correctamente"})
+    
+    # ────────────────────────────────────────────────────────────────────
+    # RUTA: GET /mail-generados
+    # ────────────────────────────────────────────────────────────────────
+    @app.route('/mail-generados', methods=['GET'])
+    def mail_generados():
+        """Página de historial de emails"""
+        emails = email_model.obtener_todos()
+        stats = email_model.obtener_estadisticas()
+        
+        return render_template(
+            'mail_generados.html',
+            emails=emails,
+            total=stats['total'],
+            existe_count=stats['existe_count'],
+            no_existe_count=stats['no_existe_count']
+        )
+
 
 
 # ----------------- MAIN -----------------
