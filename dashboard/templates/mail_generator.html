@@ -1,22 +1,54 @@
 {% extends "base.html" %}
 
 {% block titulo %}Generador de Emails{% endblock %}
-{% block subtitulo %}Genera y verifica emails @gmail.com en Google.{% endblock %}
+{% block subtitulo %}Genera y verifica emails @gmail.com automáticamente.{% endblock %}
 
 {% block contenido %}
 <div class="glass card">
-  <h3>Generar y Verificar Emails</h3>
+  <h3>🎯 Generar y Verificar Emails</h3>
   
+  <!-- FORMULARIO -->
   <form action="{{ url_for('generar_email') }}" method="post" class="inline-form">
     <input type="text" name="nombre" placeholder="Nombre" required>
     <input type="text" name="apellido" placeholder="Apellido" required>
     <input type="text" name="numero" placeholder="Número (opcional)">
-    <button type="submit" class="btn-primary">Generar</button>
+    <button type="submit" class="btn-primary">🚀 Generar</button>
   </form>
 
+  <!-- ESTADÍSTICAS -->
+  {% if total > 0 %}
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 15px; margin-top: 30px; margin-bottom: 30px;">
+    
+    <!-- Card: Total -->
+    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 15px; border-radius: 8px; text-align: center;">
+      <div style="font-size: 28px; font-weight: bold;">{{ total }}</div>
+      <div style="font-size: 12px; opacity: 0.9;">Total</div>
+    </div>
+    
+    <!-- Card: Existen -->
+    <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 15px; border-radius: 8px; text-align: center;">
+      <div style="font-size: 28px; font-weight: bold;">{{ existe_count }}</div>
+      <div style="font-size: 12px; opacity: 0.9;">✅ Existen</div>
+    </div>
+    
+    <!-- Card: No Existen -->
+    <div style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); color: white; padding: 15px; border-radius: 8px; text-align: center;">
+      <div style="font-size: 28px; font-weight: bold;">{{ no_existe_count }}</div>
+      <div style="font-size: 12px; opacity: 0.9;">❌ No Existen</div>
+    </div>
+
+    <!-- Card: Pendientes -->
+    <div style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: white; padding: 15px; border-radius: 8px; text-align: center;">
+      <div style="font-size: 28px; font-weight: bold;">{{ pendiente_count }}</div>
+      <div style="font-size: 12px; opacity: 0.9;">⏳ Pendientes</div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- TABLA DE RESULTADOS -->
   {% if variantes %}
-  <div style="margin-top: 20px;">
-    <h4>Resultados ({{ variantes|length }} variantes):</h4>
+  <div style="margin-top: 30px;">
+    <h4>📧 Resultados ({{ variantes|length }} variantes):</h4>
     <table class="table--compact">
       <thead>
         <tr>
@@ -27,33 +59,85 @@
       </thead>
       <tbody>
         {% for v in variantes %}
-        <tr>
+        <tr id="row-{{ v.email }}">
           <td><code>{{ v.email }}</code></td>
           <td>
-            {% if v.existe == True %}
-              <span style="color: #22c55e; font-weight: bold;">✅ Existe</span>
-            {% elif v.existe == False %}
-              <span style="color: #ef4444; font-weight: bold;">❌ No existe</span>
-            {% else %}
-              <span style="color: #9ca3af;">⏳ Pendiente</span>
-            {% endif %}
+            <span id="status-{{ v.email }}" style="display: inline-block; padding: 6px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; background: #fef3c7; color: #92400e;">
+              ⏳ Verificando...
+            </span>
           </td>
           <td>
-            <button type="button" class="btn-secondary" onclick="verificarEmail('{{ v.email }}', '{{ nombre }}', '{{ apellido }}')">🔍 Verificar</button>
-            {% if v.existe == True %}
-              <button type="button" class="btn-secondary" onclick="copiar('{{ v.email }}')">Copiar</button>
-            {% endif %}
+            <button type="button" class="btn-secondary" id="btn-{{ v.email }}" onclick="verificarEmail('{{ v.email }}', '{{ nombre }}', '{{ apellido }}')" style="display: none;">🔍 Verificar</button>
+            <button type="button" class="btn-secondary" id="copy-{{ v.email }}" onclick="copiar('{{ v.email }}')" style="display: none;">📋 Copiar</button>
           </td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
-  {% endif %}
-</div>
 
-<div style="margin-top: 20px;">
-  <a href="{{ url_for('mail_generados') }}" class="btn-link">Ver historial de emails generados →</a>
+  <!-- Auto-actualizar resultados cada 3 segundos -->
+  <script>
+    const emailsToCheck = {{ variantes|tojson }};
+    
+    function actualizarEstados() {
+      emailsToCheck.forEach(v => {
+        const statusEl = document.getElementById('status-' + v.email);
+        const btnVerificar = document.getElementById('btn-' + v.email);
+        const btnCopiar = document.getElementById('copy-' + v.email);
+        
+        if (!statusEl) return;
+
+        // Fetch al endpoint para obtener estado actualizado
+        fetch(`/obtener-estado-email/${encodeURIComponent(v.email)}`)
+          .then(r => r.json())
+          .then(data => {
+            if (data.existe === true) {
+              statusEl.style.background = '#d1fae5';
+              statusEl.style.color = '#065f46';
+              statusEl.innerHTML = '✅ Existe';
+              btnCopiar.style.display = 'inline-block';
+              btnVerificar.style.display = 'none';
+            } else if (data.existe === false) {
+              statusEl.style.background = '#fee2e2';
+              statusEl.style.color = '#991b1b';
+              statusEl.innerHTML = '❌ No existe';
+              btnVerificar.style.display = 'inline-block';
+              btnCopiar.style.display = 'none';
+            } else {
+              statusEl.style.background = '#fef3c7';
+              statusEl.style.color = '#92400e';
+              statusEl.innerHTML = '⏳ Verificando...';
+              btnVerificar.style.display = 'none';
+              btnCopiar.style.display = 'none';
+            }
+          })
+          .catch(e => console.log('Error:', e));
+      });
+    }
+
+    // Actualizar cada 3 segundos
+    setInterval(actualizarEstados, 3000);
+    
+    // Actualizar inmediatamente
+    actualizarEstados();
+  </script>
+  {% endif %}
+
+  <!-- INSTRUCCIONES -->
+  <div style="margin-top: 30px; background: #ede9fe; border-left: 4px solid #667eea; padding: 15px; border-radius: 6px;">
+    <h4 style="margin-top: 0; color: #667eea;">📋 Cómo funciona:</h4>
+    <ol style="margin: 10px 0; padding-left: 20px;">
+      <li>Ingresa <strong>Nombre</strong> y <strong>Apellido</strong></li>
+      <li>Haz click en "Generar"</li>
+      <li>El sistema genera automáticamente variantes de emails</li>
+      <li><strong>Selenium abre Chrome automáticamente cada 60 segundos</strong> para verificar</li>
+      <li>Los resultados se muestran en vivo en la tabla ⬆️</li>
+      <li>Puedes verificar manualmente con el botón "🔍 Verificar"</li>
+      <li>Copia los emails existentes con "📋 Copiar"</li>
+    </ol>
+  </div>
+
 </div>
 
 <!-- MODAL: Instrucciones de verificación -->
@@ -162,9 +246,9 @@ function guardarResultado(existe) {
         if (res.success) {
             alert("✅ Email guardado correctamente!");
             cerrarModal();
-            // Recargar página para ver cambios
+            // Actualizar tabla sin recargar
             setTimeout(() => {
-                location.reload();
+                actualizarEstados();
             }, 500);
         } else {
             alert("❌ Error: " + res.error);
@@ -176,4 +260,13 @@ function guardarResultado(existe) {
     });
 }
 </script>
+
+</div>
+
+<!-- Botones de navegación -->
+<div style="margin-top: 20px; display: flex; gap: 10px;">
+  <a href="{{ url_for('mail_generados') }}" class="btn-link">📊 Ver historial de emails generados →</a>
+  <a href="{{ url_for('general') }}" class="btn-link">← Volver al Dashboard</a>
+</div>
+
 {% endblock %}
