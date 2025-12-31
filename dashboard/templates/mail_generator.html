@@ -8,16 +8,16 @@
   <h3>Generar y Verificar Emails</h3>
   
   <form action="{{ url_for('generar_email') }}" method="post" class="inline-form">
-    <input type="text" name="nombre" placeholder="Nombre" required style="flex:1">
-    <input type="text" name="apellido" placeholder="Apellido" required style="flex:1">
-    <input type="text" name="numero" placeholder="Número (opcional)" style="flex:1">
+    <input type="text" name="nombre" placeholder="Nombre" required>
+    <input type="text" name="apellido" placeholder="Apellido" required>
+    <input type="text" name="numero" placeholder="Número (opcional)">
     <button type="submit" class="btn-primary">Generar</button>
   </form>
 
   {% if variantes %}
   <div style="margin-top: 20px;">
     <h4>Resultados ({{ variantes|length }} variantes):</h4>
-    <table class="table table--compact">
+    <table class="table--compact">
       <thead>
         <tr>
           <th>Email</th>
@@ -27,17 +27,22 @@
       </thead>
       <tbody>
         {% for v in variantes %}
-        <tr id="row-{{ v.email }}">
+        <tr>
           <td><code>{{ v.email }}</code></td>
-          <td id="estado-{{ v.email }}">
-            <span class="badge badge--pending">⏳ Pendiente</span>
+          <td>
+            {% if v.existe == True %}
+              <span style="color: #22c55e; font-weight: bold;">✅ Existe</span>
+            {% elif v.existe == False %}
+              <span style="color: #ef4444; font-weight: bold;">❌ No existe</span>
+            {% else %}
+              <span style="color: #9ca3af;">⏳ Pendiente</span>
+            {% endif %}
           </td>
           <td>
-            <button 
-              class="btn-small btn-verify" 
-              onclick="verificarEmail('{{ v.email }}', '{{ nombre }}', '{{ apellido }}')">
-              Verificar
-            </button>
+            <button type="button" class="btn-secondary" onclick="verificarEmail('{{ v.email }}', '{{ nombre }}', '{{ apellido }}')">🔍 Verificar</button>
+            {% if v.existe == True %}
+              <button type="button" class="btn-secondary" onclick="copiar('{{ v.email }}')">Copiar</button>
+            {% endif %}
           </td>
         </tr>
         {% endfor %}
@@ -51,397 +56,124 @@
   <a href="{{ url_for('mail_generados') }}" class="btn-link">Ver historial de emails generados →</a>
 </div>
 
-<!-- MODAL DE VERIFICACIÓN -->
-<div id="modalVerificacion" class="modal hidden">
-  <div class="modal-overlay" onclick="cerrarModal()"></div>
-  <div class="modal-content">
-    <div class="modal-header">
-      <h3>Verificando: <code id="emailEnVerificacion"></code></h3>
-      <button class="modal-close" onclick="cerrarModal()">✕</button>
-    </div>
-    
-    <div class="modal-body">
-      <div class="verification-steps">
-        <div class="step">
-          <div class="step-number">1</div>
-          <div class="step-content">
-            <strong>Se abrirá Google Account Recovery en otra pestaña</strong>
-            <p>El email ya estará pre-llenado.</p>
-          </div>
+<!-- MODAL: Instrucciones de verificación -->
+<div id="modal-verificar" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 1000; align-items: center; justify-content: center;">
+    <div style="background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: 20px; padding: 30px; max-width: 500px; width: 90%; color: var(--text-main);">
+        
+        <button type="button" onclick="cerrarModal()" style="float: right; background: none; border: none; font-size: 24px; cursor: pointer; color: var(--text-muted);">✕</button>
+        
+        <h2 style="color: var(--text-main); margin-bottom: 20px; margin-top: 0;">📌 Cómo verificar</h2>
+        
+        <div style="background: rgba(34, 197, 94, 0.1); padding: 15px; border-left: 4px solid var(--accent); margin-bottom: 20px; border-radius: 8px;">
+            <p style="margin: 0; color: var(--text-main); font-size: 14px;">
+                <strong>Email a verificar:</strong> <span id="email-modal" style="font-family: monospace; color: var(--accent);"></span>
+            </p>
         </div>
         
-        <div class="step">
-          <div class="step-number">2</div>
-          <div class="step-content">
-            <strong>Si aparece "Verificar tu identidad"</strong>
-            <p>El email <strong>EXISTE</strong> en Google</p>
-          </div>
-        </div>
+        <ol style="color: var(--text-main); line-height: 1.8; margin-bottom: 20px;">
+            <li><strong>Haz click en "Abrir Google"</strong> - Se abrirá en nueva pestaña</li>
+            <li><strong>Fíjate si el email existe</strong> - Google mostrará si es válido</li>
+            <li><strong>Vuelve a esta pestaña</strong> - Selecciona el resultado</li>
+            <li><strong>Se guarda automáticamente</strong> - En tu base de datos</li>
+        </ol>
         
-        <div class="step">
-          <div class="step-number">3</div>
-          <div class="step-content">
-            <strong>Si aparece "No encontramos tu cuenta"</strong>
-            <p>El email <strong>NO EXISTE</strong> en Google</p>
-          </div>
-        </div>
-        
-        <div class="step">
-          <div class="step-number">4</div>
-          <div class="step-content">
-            <strong>Vuelve a esta ventana y selecciona el resultado</strong>
-            <p>Los datos se guardarán automáticamente.</p>
-          </div>
-        </div>
-      </div>
-      
-      <button class="btn-primary btn-block" onclick="abrirGoogleRecovery()">
-        🔗 Abrir Google Account Recovery
-      </button>
-      
-      <div class="verification-options" style="margin-top: 20px;">
-        <p style="text-align: center; font-weight: 500; margin-bottom: 15px;">¿Cuál fue el resultado?</p>
-        
-        <button 
-          class="btn-success btn-block" 
-          onclick="guardarResultado(true)">
-          ✅ El email EXISTE en Google
+        <button type="button" id="btn-google" onclick="abrirGoogle()" style="width: 100%; padding: 12px; background-color: var(--accent); color: #022c22; border: none; border-radius: 999px; font-weight: 600; cursor: pointer; margin-bottom: 15px; font-size: 0.9rem;">
+            🌐 Abrir Google
         </button>
         
-        <button 
-          class="btn-danger btn-block" 
-          onclick="guardarResultado(false)">
-          ❌ El email NO EXISTE en Google
-        </button>
-      </div>
+        <p style="color: var(--text-muted); font-size: 14px; margin-bottom: 10px;">¿Existe el email en Google?</p>
+        <div style="display: flex; gap: 10px;">
+            <button type="button" onclick="guardarResultado(true)" style="flex: 1; padding: 12px; background-color: #22c55e; color: #022c22; border: none; border-radius: 999px; font-weight: 600; cursor: pointer; font-size: 0.9rem;">
+                ✅ Sí, existe
+            </button>
+            <button type="button" onclick="guardarResultado(false)" style="flex: 1; padding: 12px; background-color: #ef4444; color: white; border: none; border-radius: 999px; font-weight: 600; cursor: pointer; font-size: 0.9rem;">
+                ❌ No existe
+            </button>
+        </div>
     </div>
-  </div>
 </div>
 
-<style>
-.modal {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-
-.modal.hidden {
-  display: none;
-}
-
-.modal-overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.5);
-  cursor: pointer;
-}
-
-.modal-content {
-  position: relative;
-  background: white;
-  border-radius: 12px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-  max-width: 500px;
-  width: 90%;
-  max-height: 80vh;
-  overflow-y: auto;
-  z-index: 1001;
-}
-
-.modal-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 20px;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
-}
-
-.modal-header h3 {
-  margin: 0;
-  font-size: 18px;
-}
-
-.modal-close {
-  background: none;
-  border: none;
-  font-size: 24px;
-  cursor: pointer;
-  color: #666;
-  padding: 0;
-}
-
-.modal-body {
-  padding: 20px;
-}
-
-.verification-steps {
-  background: rgba(0, 0, 0, 0.02);
-  border-radius: 8px;
-  padding: 15px;
-  margin-bottom: 20px;
-}
-
-.step {
-  display: flex;
-  gap: 12px;
-  margin-bottom: 15px;
-}
-
-.step:last-child {
-  margin-bottom: 0;
-}
-
-.step-number {
-  width: 32px;
-  height: 32px;
-  background: #3498db;
-  color: white;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: bold;
-  flex-shrink: 0;
-}
-
-.step-content strong {
-  display: block;
-  margin-bottom: 4px;
-  font-size: 14px;
-}
-
-.step-content p {
-  margin: 0;
-  font-size: 13px;
-  color: #666;
-}
-
-.btn-block {
-  width: 100%;
-  padding: 12px;
-  margin-bottom: 10px;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  font-weight: 500;
-  font-size: 14px;
-}
-
-.btn-primary.btn-block {
-  background: #3498db;
-  color: white;
-}
-
-.btn-primary.btn-block:hover {
-  background: #2980b9;
-}
-
-.btn-success.btn-block {
-  background: #27ae60;
-  color: white;
-}
-
-.btn-success.btn-block:hover {
-  background: #229954;
-}
-
-.btn-danger.btn-block {
-  background: #e74c3c;
-  color: white;
-}
-
-.btn-danger.btn-block:hover {
-  background: #c0392b;
-}
-
-.verification-options {
-  border-top: 1px solid rgba(0, 0, 0, 0.1);
-  padding-top: 15px;
-}
-
-.badge {
-  display: inline-block;
-  padding: 4px 8px;
-  border-radius: 4px;
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.badge--pending {
-  background: #fff3cd;
-  color: #856404;
-}
-
-.badge--existe {
-  background: #d4edda;
-  color: #155724;
-}
-
-.badge--no-existe {
-  background: #f8d7da;
-  color: #721c24;
-}
-
-.btn-small {
-  padding: 6px 12px;
-  font-size: 12px;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: all 0.3s ease;
-}
-
-.btn-verify {
-  background: #3498db;
-  color: white;
-}
-
-.btn-verify:hover {
-  background: #2980b9;
-}
-
-.btn-link {
-  color: #3498db;
-  text-decoration: none;
-  font-weight: 500;
-}
-
-.btn-link:hover {
-  text-decoration: underline;
-}
-
-.inline-form {
-  display: flex;
-  gap: 10px;
-  margin-bottom: 20px;
-}
-
-.inline-form input {
-  padding: 10px;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  font-size: 14px;
-}
-
-.inline-form button {
-  padding: 10px 20px;
-  background: #3498db;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-weight: 500;
-}
-
-.inline-form button:hover {
-  background: #2980b9;
-}
-
-.table--compact td, .table--compact th {
-  padding: 10px;
-  text-align: left;
-}
-
-code {
-  background: #f5f5f5;
-  padding: 3px 6px;
-  border-radius: 3px;
-  font-family: monospace;
-}
-</style>
-
 <script>
-let emailActual = null;
-let nombreActual = null;
-let apellidoActual = null;
-let urlRecuperacion = null;
+let emailActual = "";
+let nombreActual = "";
+let apellidoActual = "";
+
+function copiar(email) {
+  navigator.clipboard.writeText(email);
+  alert('✅ ' + email + ' copiado al portapapeles');
+}
 
 function verificarEmail(email, nombre, apellido) {
-  emailActual = email;
-  nombreActual = nombre;
-  apellidoActual = apellido;
-  
-  document.getElementById('modalVerificacion').classList.remove('hidden');
-  document.getElementById('emailEnVerificacion').textContent = email;
-  
-  fetch(`/verificar-email-gmail/${email}`)
-    .then(res => res.json())
-    .then(data => {
-      urlRecuperacion = data.url;
-    })
-    .catch(err => console.error('Error:', err));
-}
-
-function abrirGoogleRecovery() {
-  if (urlRecuperacion) {
-    window.open(urlRecuperacion, '_blank', 'width=800,height=600');
-  }
-}
-
-function guardarResultado(existe) {
-  if (!emailActual) return;
-  
-  fetch('/guardar-verificacion-email', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      email: emailActual,
-      existe: existe,
-      nombre: nombreActual,
-      apellido: apellidoActual
-    })
-  })
-  .then(res => res.json())
-  .then(data => {
-    if (data.success) {
-      const estadoCell = document.getElementById(`estado-${emailActual}`);
-      if (estadoCell) {
-        if (existe) {
-          estadoCell.innerHTML = '<span class="badge badge--existe">✅ Existe</span>';
-        } else {
-          estadoCell.innerHTML = '<span class="badge badge--no-existe">❌ No Existe</span>';
-        }
-      }
-      
-      const btnVerify = document.querySelector(`#row-${emailActual} .btn-verify`);
-      if (btnVerify) {
-        btnVerify.textContent = '✓ Verificado';
-        btnVerify.disabled = true;
-        btnVerify.style.opacity = '0.6';
-      }
-      
-      setTimeout(() => {
-        cerrarModal();
-        alert(data.message);
-      }, 1000);
-    } else {
-      alert('Error: ' + data.error);
-    }
-  })
-  .catch(err => alert('Error: ' + err.message));
+    console.log("Email:", email, "Nombre:", nombre, "Apellido:", apellido);
+    emailActual = email;
+    nombreActual = nombre;
+    apellidoActual = apellido;
+    
+    document.getElementById("email-modal").textContent = emailActual;
+    document.getElementById("modal-verificar").style.display = "flex";
 }
 
 function cerrarModal() {
-  document.getElementById('modalVerificacion').classList.add('hidden');
-  emailActual = null;
-  urlRecuperacion = null;
+    document.getElementById("modal-verificar").style.display = "none";
 }
 
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') {
-    cerrarModal();
-  }
-});
+function abrirGoogle() {
+    const googleUrl = "/verificar-email-gmail/" + encodeURIComponent(emailActual);
+    fetch(googleUrl)
+        .then(r => r.json())
+        .then(data => {
+            if (data.url) {
+                window.open(data.url, '_blank');
+            } else {
+                alert("Error: No se pudo abrir Google");
+            }
+        })
+        .catch(err => {
+            console.error("Error:", err);
+            alert("Error al conectar con Google");
+        });
+}
+
+function guardarResultado(existe) {
+    if (!emailActual) {
+        alert("Error: Email no definido");
+        return;
+    }
+    
+    const data = {
+        email: emailActual,
+        existe: existe,
+        nombre: nombreActual,
+        apellido: apellidoActual
+    };
+    
+    console.log("Guardando:", data);
+    
+    fetch("/guardar-verificacion-email", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify(data)
+    })
+    .then(r => r.json())
+    .then(res => {
+        console.log("Respuesta:", res);
+        if (res.success) {
+            alert("✅ Email guardado correctamente!");
+            cerrarModal();
+            // Recargar página para ver cambios
+            setTimeout(() => {
+                location.reload();
+            }, 500);
+        } else {
+            alert("❌ Error: " + res.error);
+        }
+    })
+    .catch(err => {
+        console.error("Error:", err);
+        alert("Error al guardar");
+    });
+}
 </script>
 {% endblock %}

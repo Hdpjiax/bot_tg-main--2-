@@ -411,12 +411,9 @@ def historial_usuario(username):
 # ============================================================================
 # MAIL GENERATOR - FUNCIONES PARA app_dashboard.py
 # ============================================================================
-# Copia TODO esto y pégalo al FINAL de tu app_dashboard.py
 
 from flask import render_template, request, jsonify
 from datetime import datetime
-import itertools
-import requests
 from urllib.parse import quote
 
 # ============================================================================
@@ -429,29 +426,6 @@ class EmailGenerado:
     def __init__(self, supabase_client):
         self.db = supabase_client
         self.table = "emails_generados"
-        self.ensure_table_exists()
-    
-    def ensure_table_exists(self):
-        """Crea la tabla si no existe"""
-        try:
-            # Intenta hacer una consulta para verificar que existe
-            self.db.table(self.table).select("id").limit(1).execute()
-        except:
-            # Si no existe, intenta crearla
-            try:
-                # Esta es una creación manual - necesitas hacerlo en Supabase UI
-                # CREATE TABLE emails_generados (
-                #   id BIGSERIAL PRIMARY KEY,
-                #   email TEXT UNIQUE NOT NULL,
-                #   nombre TEXT,
-                #   apellido TEXT,
-                #   existe_en_google BOOLEAN,
-                #   verificado_en TIMESTAMP,
-                #   created_at TIMESTAMP DEFAULT NOW()
-                # );
-                pass
-            except:
-                pass
     
     def crear(self, email, nombre, apellido, existe=None):
         """Crea un nuevo email en la BD"""
@@ -484,10 +458,10 @@ class EmailGenerado:
             return None
     
     def obtener_todos(self):
-        """Obtiene todos los emails"""
+        """Obtiene todos los emails ordenados por fecha"""
         try:
             response = self.db.table(self.table).select("*").order("created_at", desc=True).execute()
-            return response.data
+            return response.data if response.data else []
         except Exception as e:
             print(f"Error obteniendo emails: {e}")
             return []
@@ -504,7 +478,8 @@ class EmailGenerado:
                 "existe_count": existe_count,
                 "no_existe_count": no_existe_count
             }
-        except:
+        except Exception as e:
+            print(f"Error obteniendo estadísticas: {e}")
             return {"total": 0, "existe_count": 0, "no_existe_count": 0}
 
 
@@ -559,10 +534,8 @@ def generar_url_verificacion_google(email):
     Genera la URL para verificar un email en Google
     Usa Google Account Recovery sin necesidad de contraseña
     """
-    # Opción 1: Google Account Recovery (recomendado)
-    email_encoded = quote(email.split('@')[0])  # Solo la parte local
+    email_encoded = quote(email.split('@')[0])
     url = f"https://accounts.google.com/signin/recovery?email={email_encoded}"
-    
     return url
 
 
@@ -585,6 +558,9 @@ def register_mail_generator_routes(app, supabase_client):
         nombre = request.args.get('nombre', '')
         apellido = request.args.get('apellido', '')
         
+        # Obtener estadísticas
+        stats = email_model.obtener_estadisticas()
+        
         # Si viene con parámetros, mostrar variantes
         if variantes:
             variantes_list = variantes.split(',')
@@ -602,7 +578,10 @@ def register_mail_generator_routes(app, supabase_client):
             'mail_generator.html',
             variantes=variantes_data,
             nombre=nombre,
-            apellido=apellido
+            apellido=apellido,
+            total=stats['total'],
+            existe_count=stats['existe_count'],
+            no_existe_count=stats['no_existe_count']
         )
     
     # ────────────────────────────────────────────────────────────────────
@@ -616,10 +595,16 @@ def register_mail_generator_routes(app, supabase_client):
         numero = request.form.get('numero', '').strip()
         
         if not nombre or not apellido:
+            stats = email_model.obtener_estadisticas()
             return render_template(
                 'mail_generator.html',
                 variantes=None,
-                error="Nombre y apellido son requeridos"
+                nombre='',
+                apellido='',
+                error="Nombre y apellido son requeridos",
+                total=stats['total'],
+                existe_count=stats['existe_count'],
+                no_existe_count=stats['no_existe_count']
             )
         
         # Generar variantes
@@ -628,19 +613,23 @@ def register_mail_generator_routes(app, supabase_client):
         # Crear registros en BD
         variantes_data = []
         for email in variantes:
-            email_obj = email_model.crear(email, nombre, apellido)
+            email_model.crear(email, nombre, apellido)
             variantes_data.append({
                 "email": email,
                 "existe": None  # Pendiente
             })
         
-        # Redirigir a la página con las variantes
-        variantes_str = ','.join(variantes)
+        # Obtener estadísticas actualizadas
+        stats = email_model.obtener_estadisticas()
+        
         return render_template(
             'mail_generator.html',
             variantes=variantes_data,
             nombre=nombre,
-            apellido=apellido
+            apellido=apellido,
+            total=stats['total'],
+            existe_count=stats['existe_count'],
+            no_existe_count=stats['no_existe_count']
         )
     
     # ────────────────────────────────────────────────────────────────────
@@ -658,20 +647,24 @@ def register_mail_generator_routes(app, supabase_client):
     @app.route('/guardar-verificacion-email', methods=['POST'])
     def guardar_verificacion_email():
         """Guarda el resultado de la verificación"""
-        data = request.get_json()
-        
-        email = data.get('email', '').strip()
-        existe = data.get('existe')
-        nombre = data.get('nombre', '').strip()
-        apellido = data.get('apellido', '').strip()
-        
-        if not email or existe is None:
-            return jsonify({"success": False, "error": "Datos incompletos"}), 400
-        
-        # Actualizar en BD
-        email_model.actualizar(email, existe)
-        
-        return jsonify({"success": True, "message": "Email guardado correctamente"})
+        try:
+            data = request.get_json()
+            
+            email = data.get('email', '').strip()
+            existe = data.get('existe')
+            nombre = data.get('nombre', '').strip()
+            apellido = data.get('apellido', '').strip()
+            
+            if not email or existe is None:
+                return jsonify({"success": False, "error": "Datos incompletos"}), 400
+            
+            # Actualizar en BD
+            email_model.actualizar(email, existe)
+            
+            return jsonify({"success": True, "message": "Email guardado correctamente"})
+        except Exception as e:
+            print(f"Error guardando verificación: {e}")
+            return jsonify({"success": False, "error": str(e)}), 500
     
     # ────────────────────────────────────────────────────────────────────
     # RUTA: GET /mail-generados
@@ -689,7 +682,6 @@ def register_mail_generator_routes(app, supabase_client):
             existe_count=stats['existe_count'],
             no_existe_count=stats['no_existe_count']
         )
-
 
 
 # ----------------- MAIN -----------------
