@@ -1,6 +1,10 @@
 import asyncio
 from telethon import TelegramClient
-from telethon.errors import UserBannedError, ChatAdminRequiredError, ChannelPrivateError
+from telethon.errors import (
+    rpcerrorlist,
+    ChannelPrivateError,
+    ChatAdminRequiredError
+)
 from telethon.tl.functions.channels import JoinChannelRequest
 import time
 import re
@@ -31,9 +35,6 @@ class SpamTelegram:
     def extraer_grupo_id(self, enlace):
         """
         Extrae el ID del grupo de diferentes formatos de enlaces
-        - https://t.me/groupname → @groupname
-        - https://t.me/joinchat/ABC123 → ABC123
-        - t.me/+123456789 → +123456789
         """
         try:
             # Formato: https://t.me/joinchat/ABC123
@@ -66,11 +67,6 @@ class SpamTelegram:
     async def spam_grupo(self, enlace_grupo, mensaje, repeticiones=5, delay=2):
         """
         Envía spam a un grupo
-        
-        enlace_grupo: Link del grupo (ej: https://t.me/groupname)
-        mensaje: Texto a enviar
-        repeticiones: Cuántas veces
-        delay: Segundos entre mensajes
         """
         grupo_ref = self.extraer_grupo_id(enlace_grupo)
         
@@ -104,25 +100,31 @@ class SpamTelegram:
                     self.stats["enviados"] += 1
                     print(f"[SPAM] ✅ [{i+1}/{repeticiones}] Enviado a {grupo_ref}")
                 
-                except UserBannedError:
-                    print(f"[SPAM] ❌ Fuiste BANEADO del grupo {grupo_ref}")
-                    self.stats["baneados"] += 1
-                    break
-                
-                except ChatAdminRequiredError:
-                    print(f"[SPAM] ⚠️ Sin permisos en {grupo_ref}")
-                    self.stats["sin_permisos"] += 1
-                    break
-                
-                except ChannelPrivateError:
-                    print(f"[SPAM] ❌ Grupo privado: {grupo_ref}")
-                    self.stats["fallidos"] += 1
-                    break
-                
                 except Exception as e:
-                    print(f"[SPAM] ⚠️ Error: {str(e)[:50]}")
-                    self.stats["fallidos"] += 1
-                    break
+                    error_str = str(e).lower()
+                    
+                    # Detectar si fue baneado
+                    if 'banned' in error_str or 'you are restricted' in error_str:
+                        print(f"[SPAM] ❌ Fuiste BANEADO del grupo {grupo_ref}")
+                        self.stats["baneados"] += 1
+                        break
+                    
+                    # Detectar si no tiene permisos
+                    elif 'admin' in error_str or 'permission' in error_str:
+                        print(f"[SPAM] ⚠️ Sin permisos en {grupo_ref}")
+                        self.stats["sin_permisos"] += 1
+                        break
+                    
+                    # Detectar si es privado
+                    elif 'private' in error_str:
+                        print(f"[SPAM] ❌ Grupo privado: {grupo_ref}")
+                        self.stats["fallidos"] += 1
+                        break
+                    
+                    else:
+                        print(f"[SPAM] ⚠️ Error: {str(e)[:50]}")
+                        self.stats["fallidos"] += 1
+                        break
                 
                 # Delay para evitar bloqueo
                 if i < repeticiones - 1:
@@ -137,7 +139,6 @@ class SpamTelegram:
     async def spam_multiples_grupos(self, enlaces_grupos, mensaje, repeticiones=5, delay=2, delay_entre_grupos=5):
         """
         Spam en múltiples grupos
-        enlaces_grupos: Lista de links
         """
         print(f"\n{'='*60}")
         print(f"[SPAM] 🎯 INICIANDO SPAM EN {len(enlaces_grupos)} GRUPOS")
