@@ -27,13 +27,17 @@
       </thead>
       <tbody>
         {% for v in variantes %}
-        <tr>
+        <tr id="row-{{ v.email }}">
           <td><code>{{ v.email }}</code></td>
-          <td>{{ v.estado }}</td>
+          <td id="estado-{{ v.email }}">
+            <span class="badge badge--pending">⏳ Pendiente</span>
+          </td>
           <td>
-            {% if v.existe %}
-            <button class="btn-small" onclick="copiar('{{ v.email }}')">Copiar</button>
-            {% endif %}
+            <button 
+              class="btn-small btn-verify" 
+              onclick="verificarEmail('{{ v.email }}', '{{ nombre }}', '{{ apellido }}')">
+              Verificar
+            </button>
           </td>
         </tr>
         {% endfor %}
@@ -47,10 +51,397 @@
   <a href="{{ url_for('mail_generados') }}" class="btn-link">Ver historial de emails generados →</a>
 </div>
 
-<script>
-function copiar(email) {
-  navigator.clipboard.writeText(email);
-  alert('✅ ' + email + ' copiado al portapapeles');
+<!-- MODAL DE VERIFICACIÓN -->
+<div id="modalVerificacion" class="modal hidden">
+  <div class="modal-overlay" onclick="cerrarModal()"></div>
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3>Verificando: <code id="emailEnVerificacion"></code></h3>
+      <button class="modal-close" onclick="cerrarModal()">✕</button>
+    </div>
+    
+    <div class="modal-body">
+      <div class="verification-steps">
+        <div class="step">
+          <div class="step-number">1</div>
+          <div class="step-content">
+            <strong>Se abrirá Google Account Recovery en otra pestaña</strong>
+            <p>El email ya estará pre-llenado.</p>
+          </div>
+        </div>
+        
+        <div class="step">
+          <div class="step-number">2</div>
+          <div class="step-content">
+            <strong>Si aparece "Verificar tu identidad"</strong>
+            <p>El email <strong>EXISTE</strong> en Google</p>
+          </div>
+        </div>
+        
+        <div class="step">
+          <div class="step-number">3</div>
+          <div class="step-content">
+            <strong>Si aparece "No encontramos tu cuenta"</strong>
+            <p>El email <strong>NO EXISTE</strong> en Google</p>
+          </div>
+        </div>
+        
+        <div class="step">
+          <div class="step-number">4</div>
+          <div class="step-content">
+            <strong>Vuelve a esta ventana y selecciona el resultado</strong>
+            <p>Los datos se guardarán automáticamente.</p>
+          </div>
+        </div>
+      </div>
+      
+      <button class="btn-primary btn-block" onclick="abrirGoogleRecovery()">
+        🔗 Abrir Google Account Recovery
+      </button>
+      
+      <div class="verification-options" style="margin-top: 20px;">
+        <p style="text-align: center; font-weight: 500; margin-bottom: 15px;">¿Cuál fue el resultado?</p>
+        
+        <button 
+          class="btn-success btn-block" 
+          onclick="guardarResultado(true)">
+          ✅ El email EXISTE en Google
+        </button>
+        
+        <button 
+          class="btn-danger btn-block" 
+          onclick="guardarResultado(false)">
+          ❌ El email NO EXISTE en Google
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+.modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
 }
+
+.modal.hidden {
+  display: none;
+}
+
+.modal-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+}
+
+.modal-content {
+  position: relative;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  max-width: 500px;
+  width: 90%;
+  max-height: 80vh;
+  overflow-y: auto;
+  z-index: 1001;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: #666;
+  padding: 0;
+}
+
+.modal-body {
+  padding: 20px;
+}
+
+.verification-steps {
+  background: rgba(0, 0, 0, 0.02);
+  border-radius: 8px;
+  padding: 15px;
+  margin-bottom: 20px;
+}
+
+.step {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 15px;
+}
+
+.step:last-child {
+  margin-bottom: 0;
+}
+
+.step-number {
+  width: 32px;
+  height: 32px;
+  background: #3498db;
+  color: white;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  flex-shrink: 0;
+}
+
+.step-content strong {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 14px;
+}
+
+.step-content p {
+  margin: 0;
+  font-size: 13px;
+  color: #666;
+}
+
+.btn-block {
+  width: 100%;
+  padding: 12px;
+  margin-bottom: 10px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 500;
+  font-size: 14px;
+}
+
+.btn-primary.btn-block {
+  background: #3498db;
+  color: white;
+}
+
+.btn-primary.btn-block:hover {
+  background: #2980b9;
+}
+
+.btn-success.btn-block {
+  background: #27ae60;
+  color: white;
+}
+
+.btn-success.btn-block:hover {
+  background: #229954;
+}
+
+.btn-danger.btn-block {
+  background: #e74c3c;
+  color: white;
+}
+
+.btn-danger.btn-block:hover {
+  background: #c0392b;
+}
+
+.verification-options {
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+  padding-top: 15px;
+}
+
+.badge {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.badge--pending {
+  background: #fff3cd;
+  color: #856404;
+}
+
+.badge--existe {
+  background: #d4edda;
+  color: #155724;
+}
+
+.badge--no-existe {
+  background: #f8d7da;
+  color: #721c24;
+}
+
+.btn-small {
+  padding: 6px 12px;
+  font-size: 12px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.btn-verify {
+  background: #3498db;
+  color: white;
+}
+
+.btn-verify:hover {
+  background: #2980b9;
+}
+
+.btn-link {
+  color: #3498db;
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.btn-link:hover {
+  text-decoration: underline;
+}
+
+.inline-form {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.inline-form input {
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.inline-form button {
+  padding: 10px 20px;
+  background: #3498db;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.inline-form button:hover {
+  background: #2980b9;
+}
+
+.table--compact td, .table--compact th {
+  padding: 10px;
+  text-align: left;
+}
+
+code {
+  background: #f5f5f5;
+  padding: 3px 6px;
+  border-radius: 3px;
+  font-family: monospace;
+}
+</style>
+
+<script>
+let emailActual = null;
+let nombreActual = null;
+let apellidoActual = null;
+let urlRecuperacion = null;
+
+function verificarEmail(email, nombre, apellido) {
+  emailActual = email;
+  nombreActual = nombre;
+  apellidoActual = apellido;
+  
+  document.getElementById('modalVerificacion').classList.remove('hidden');
+  document.getElementById('emailEnVerificacion').textContent = email;
+  
+  fetch(`/verificar-email-gmail/${email}`)
+    .then(res => res.json())
+    .then(data => {
+      urlRecuperacion = data.url;
+    })
+    .catch(err => console.error('Error:', err));
+}
+
+function abrirGoogleRecovery() {
+  if (urlRecuperacion) {
+    window.open(urlRecuperacion, '_blank', 'width=800,height=600');
+  }
+}
+
+function guardarResultado(existe) {
+  if (!emailActual) return;
+  
+  fetch('/guardar-verificacion-email', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      email: emailActual,
+      existe: existe,
+      nombre: nombreActual,
+      apellido: apellidoActual
+    })
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (data.success) {
+      const estadoCell = document.getElementById(`estado-${emailActual}`);
+      if (estadoCell) {
+        if (existe) {
+          estadoCell.innerHTML = '<span class="badge badge--existe">✅ Existe</span>';
+        } else {
+          estadoCell.innerHTML = '<span class="badge badge--no-existe">❌ No Existe</span>';
+        }
+      }
+      
+      const btnVerify = document.querySelector(`#row-${emailActual} .btn-verify`);
+      if (btnVerify) {
+        btnVerify.textContent = '✓ Verificado';
+        btnVerify.disabled = true;
+        btnVerify.style.opacity = '0.6';
+      }
+      
+      setTimeout(() => {
+        cerrarModal();
+        alert(data.message);
+      }, 1000);
+    } else {
+      alert('Error: ' + data.error);
+    }
+  })
+  .catch(err => alert('Error: ' + err.message));
+}
+
+function cerrarModal() {
+  document.getElementById('modalVerificacion').classList.add('hidden');
+  emailActual = null;
+  urlRecuperacion = null;
+}
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    cerrarModal();
+  }
+});
 </script>
 {% endblock %}

@@ -35,16 +35,16 @@
       {% for e in emails %}
       <tr>
         <td><code>{{ e.email }}</code></td>
-        <td>{{ e.nombre }}</td>
-        <td>{{ e.apellido }}</td>
+        <td>{{ e.nombre | capitalize }}</td>
+        <td>{{ e.apellido | capitalize }}</td>
         <td>
-          {% if e.existe_en_google %}
-          ✅ Sí
+          {% if e.existe_en_goo %}
+          <span class="badge badge--existe">✅ Sí</span>
           {% else %}
-          ❌ No
+          <span class="badge badge--no-existe">❌ No</span>
           {% endif %}
         </td>
-        <td>{{ e.verificado_en[:10] }}</td>
+        <td><small>{{ e.verificado_en[:10] if e.verificado_en else 'N/A' }}</small></td>
       </tr>
       {% endfor %}
     </tbody>
@@ -53,4 +53,120 @@
   <p>No hay emails generados aún.</p>
   {% endif %}
 </div>
+
+<div style="margin-top: 20px;">
+  <a href="{{ url_for('mail_generator') }}" class="btn-link">← Volver al generador</a>
+</div>
+
+<style>
+.badge {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.badge--existe {
+  background: #d4edda;
+  color: #155724;
+}
+
+.badge--no-existe {
+  background: #f8d7da;
+  color: #721c24;
+}
+
+.cards-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 15px;
+  margin-bottom: 30px;
+}
+
+.info-card {
+  padding: 20px;
+  border-radius: 8px;
+  text-align: center;
+}
+
+.info-card--blue {
+  background: rgba(52, 152, 219, 0.1);
+  border-left: 4px solid #3498db;
+}
+
+.info-card--green {
+  background: rgba(39, 174, 96, 0.1);
+  border-left: 4px solid #27ae60;
+}
+
+.info-card--yellow {
+  background: rgba(241, 196, 15, 0.1);
+  border-left: 4px solid #f1c40f;
+}
+
+.info-card__label {
+  font-size: 12px;
+  color: #666;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.info-card__value {
+  font-size: 28px;
+  font-weight: bold;
+  color: #333;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.table thead {
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.table th {
+  padding: 12px;
+  text-align: left;
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  color: #666;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.table td {
+  padding: 12px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.table tbody tr:hover {
+  background: rgba(0, 0, 0, 0.02);
+}
+
+code {
+  background: rgba(0, 0, 0, 0.05);
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 11px;
+}
+
+small {
+  color: #999;
+  font-size: 12px;
+}
+
+.btn-link {
+  color: #3498db;
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.btn-link:hover {
+  text-decoration: underline;
+}
+</style>
 {% endblock %}
