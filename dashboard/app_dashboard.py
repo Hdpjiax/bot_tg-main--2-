@@ -3,7 +3,6 @@ from datetime import datetime, timedelta
 import requests
 import json
 from collections import Counter
-from urllib.parse import urlencode, quote
 from google.auth.transport.requests import Request
 from google.oauth2.service_account import Credentials
 from flask import (
@@ -12,9 +11,16 @@ from flask import (
 )
 from supabase import create_client, Client
 from telegram import Bot, InputMediaPhoto
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
+from urllib.parse import quote
 import threading
 import time
-import httpx
 
 
 # ============================================================================
@@ -58,7 +64,7 @@ def enviar_foto(chat_id: int, fileobj, caption: str = ""):
 
 
 # ============================================================================
-# MAIL GENERATOR - CLASES Y FUNCIONES
+# EMAIL GENERATOR - CLASES
 # ============================================================================
 
 class EmailGenerado:
@@ -161,84 +167,128 @@ def generar_url_verificacion_google(email):
 
 
 # ============================================================================
-# VERIFICADOR AUTOMÁTICO SIN SELENIUM (USANDO API)
+# VERIFICADOR CON SELENIUM (VENTANA REAL)
 # ============================================================================
 
-class VerificadorAutomatico:
-    """Verifica automáticamente si emails existen en Google usando API"""
+class VerificadorConSelenium:
+    """Verifica emails con Selenium abriendo Chrome real"""
     
     def __init__(self, supabase_client):
         self.db = supabase_client
         self.table = "emails_generados"
     
-    def verificar_email_en_google(self, email):
-        """
-        Verifica si un email existe en Google
-        Usa un método basado en HTTP requests
-        """
+    def obtener_chromedriver(self):
+        """Obtiene ChromeDriver automáticamente"""
         try:
-            # Método 1: Intentar enviar a Google Accounts
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-            }
-            
-            # Ir a la página de recuperación de Google
-            url = f"https://accounts.google.com/signin/recovery?email={email.split('@')[0]}"
-            
-            response = httpx.get(url, headers=headers, timeout=10, follow_redirects=True)
-            
-            # Si el email existe, Google no redirige a una página de error
-            # Si el email NO existe, Google muestra un mensaje de error
-            
-            if response.status_code == 200:
-                # Buscar keywords que indican que el email NO existe
-                texto = response.text.lower()
-                
-                no_existe_keywords = [
-                    "no encontramos",
-                    "no hemos encontrado",
-                    "not found",
-                    "account not found",
-                    "cuenta no encontrada"
-                ]
-                
-                existe = True  # Por defecto asume que existe
-                
-                for keyword in no_existe_keywords:
-                    if keyword in texto:
-                        existe = False
-                        break
-                
-                return existe
-            else:
-                # Si hay error HTTP, asume que existe
-                return True
-        
-        except httpx.TimeoutException:
-            print(f"[AUTO] Timeout verificando {email}")
-            return None
+            service = Service(ChromeDriverManager().install())
+            return service
         except Exception as e:
-            print(f"[AUTO] Error verificando {email}: {e}")
+            print(f"[SELENIUM] Error obteniendo ChromeDriver: {e}")
             return None
     
-    def procesar_pendientes_automatico(self):
-        """Procesa TODOS los emails pendientes automáticamente"""
+    def verificar_email_en_google(self, email, mostrar_ventana=True):
+        """
+        Abre Chrome y verifica si el email existe
+        mostrar_ventana=True → abre ventana visible
+        mostrar_ventana=False → ventana oculta (headless)
+        """
+        driver = None
+        try:
+            # Configurar Chrome
+            chrome_options = Options()
+            
+            if not mostrar_ventana:
+                chrome_options.add_argument("--headless")
+            else:
+                chrome_options.add_argument("--start-maximized")
+            
+            chrome_options.add_argument("--no-sandbox")
+            chrome_options.add_argument("--disable-dev-shm-usage")
+            chrome_options.add_argument("--disable-gpu")
+            chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+            
+            # Obtener servicio
+            service = self.obtener_chromedriver()
+            if not service:
+                return None
+            
+            # Crear driver
+            driver = webdriver.Chrome(service=service, options=chrome_options)
+            driver.set_page_load_timeout(15)
+            
+            # Ir a Google Account Recovery
+            email_part = email.split('@')[0]
+            url = f"https://accounts.google.com/signin/recovery?email={email_part}"
+            
+            print(f"\n[SELENIUM] 🌐 Abriendo Chrome para: {email}")
+            print(f"[SELENIUM] 📍 URL: {url}\n")
+            
+            driver.get(url)
+            time.sleep(4)
+            
+            # Esperar que cargue la página
+            try:
+                WebDriverWait(driver, 10).until(
+                    EC.presence_of_all_elements_located((By.TAG_NAME, "input"))
+                )
+            except:
+                print(f"[SELENIUM] ⚠️  Timeout esperando elementos")
+            
+            time.sleep(3)
+            
+            # Buscar si el email existe o no
+            html = driver.page_source.lower()
+            
+            # Keywords que indican que NO existe
+            no_existe_keywords = [
+                "no encontramos",
+                "no hemos encontrado",
+                "not found",
+                "account not found",
+                "cuenta no encontrada",
+                "this account doesn't exist"
+            ]
+            
+            existe = True
+            for keyword in no_existe_keywords:
+                if keyword in html:
+                    existe = False
+                    break
+            
+            return existe
+        
+        except Exception as e:
+            print(f"[SELENIUM] ❌ Error verificando {email}: {e}")
+            return None
+        
+        finally:
+            if driver:
+                try:
+                    driver.quit()
+                    print(f"[SELENIUM] ✅ Chrome cerrado\n")
+                except:
+                    pass
+    
+    def procesar_pendientes(self, mostrar_ventana=True):
+        """Procesa todos los emails pendientes"""
         try:
             response = self.db.table(self.table).select("*").is_("existe_en_google", None).execute()
             pendientes = response.data if response.data else []
             
             if pendientes:
-                print(f"\n[AUTO] ✨ Encontrados {len(pendientes)} emails pendientes")
+                print(f"\n[SELENIUM] 🚀 INICIANDO VERIFICACIÓN")
+                print(f"[SELENIUM] 📧 Emails pendientes: {len(pendientes)}\n")
             
-            for email_record in pendientes:
+            for idx, email_record in enumerate(pendientes, 1):
                 email = email_record.get("email")
                 
                 if not email:
                     continue
                 
-                print(f"[AUTO] 🔍 Verificando: {email}")
+                print(f"[SELENIUM] [{idx}/{len(pendientes)}] Procesando: {email}")
                 
-                existe = self.verificar_email_en_google(email)
+                # Verificar con ventana visible o headless
+                existe = self.verificar_email_en_google(email, mostrar_ventana=mostrar_ventana)
                 
                 if existe is not None:
                     try:
@@ -248,33 +298,40 @@ class VerificadorAutomatico:
                         }).eq("email", email).execute()
                         
                         status = "✅ EXISTE" if existe else "❌ NO EXISTE"
-                        print(f"[AUTO] {status} → {email}")
+                        print(f"[SELENIUM] {status} → {email}\n")
                     except Exception as e:
-                        print(f"[AUTO] Error actualizando BD: {e}")
+                        print(f"[SELENIUM] Error actualizando BD: {e}")
                 
-                time.sleep(1)  # Esperar entre verificaciones
+                time.sleep(2)
         
         except Exception as e:
-            print(f"[AUTO] Error en proceso: {e}")
+            print(f"[SELENIUM] Error en proceso: {e}")
     
-    def iniciar_verificacion_automatica(self):
-        """Inicia un thread que verifica automáticamente"""
+    def iniciar_verificacion_automatica(self, mostrar_ventana=True):
+        """Inicia verificación automática en background"""
         def worker():
+            print("\n[SELENIUM] ⏰ Sistema en espera de emails pendientes...\n")
             while True:
-                self.procesar_pendientes_automatico()
-                time.sleep(30)  # Esperar 30 segundos entre verificaciones
+                self.procesar_pendientes(mostrar_ventana=mostrar_ventana)
+                print(f"[SELENIUM] ⏳ Próxima verificación en 60 segundos...\n")
+                time.sleep(60)
         
         thread = threading.Thread(target=worker, daemon=True)
         thread.start()
-        print("[AUTO] ✅ Sistema de verificación automática INICIADO\n")
+        print("\n[SELENIUM] ✅ Sistema de verificación INICIADO (Ventana visible)\n")
 
 
 # Inicializar modelo de emails
 email_model = EmailGenerado(supabase)
 
-# Inicializar y arrancar verificador automático
-verificador_automatico = VerificadorAutomatico(supabase)
-verificador_automatico.iniciar_verificacion_automatica()
+# Inicializar Selenium
+verificador = VerificadorConSelenium(supabase)
+
+# OPCIÓN 1: Ventana VISIBLE (recomendado para probar)
+verificador.iniciar_verificacion_automatica(mostrar_ventana=True)
+
+# OPCIÓN 2: Descomenta esto si quieres ventana OCULTA
+# verificador.iniciar_verificacion_automatica(mostrar_ventana=False)
 
 
 # ============================================================================
@@ -396,7 +453,7 @@ def mail_generados():
 
 
 # ============================================================================
-# RUTAS - OTROS (TUS RUTAS EXISTENTES)
+# RUTAS - GENERAL / ESTADÍSTICAS
 # ============================================================================
 
 @app.route("/vuelo/<int:vuelo_id>")
@@ -488,6 +545,10 @@ def general():
     )
 
 
+# ============================================================================
+# RUTAS - POR COTIZAR
+# ============================================================================
+
 @app.route("/por-cotizar")
 def por_cotizar():
     pendientes = (
@@ -556,6 +617,10 @@ def accion_cotizar():
     return redirect(url_for("por_cotizar"))
 
 
+# ============================================================================
+# RUTAS - VALIDAR PAGOS
+# ============================================================================
+
 @app.route("/validar-pagos")
 def validar_pagos():
     pendientes = (
@@ -610,6 +675,10 @@ def accion_confirmar_pago():
 
     return redirect(url_for("validar_pagos"))
 
+
+# ============================================================================
+# RUTAS - POR ENVIAR QR
+# ============================================================================
 
 @app.route("/por-enviar-qr")
 def por_enviar_qr():
@@ -690,6 +759,10 @@ def accion_enviar_qr():
     return redirect(url_for("por_enviar_qr"))
 
 
+# ============================================================================
+# RUTAS - PRÓXIMOS VUELOS
+# ============================================================================
+
 @app.route("/proximos-vuelos")
 def proximos_vuelos():
     hoy, hasta = rango_proximos()
@@ -704,6 +777,10 @@ def proximos_vuelos():
     )
     return render_template("proximos_vuelos.html", vuelos=proximos)
 
+
+# ============================================================================
+# RUTAS - HISTORIAL
+# ============================================================================
 
 @app.route("/historial")
 def historial():
