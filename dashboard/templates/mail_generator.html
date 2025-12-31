@@ -8,47 +8,45 @@
   <h3>🎯 Generar y Verificar Emails</h3>
   
   <!-- FORMULARIO -->
-  <form action="{{ url_for('generar_email') }}" method="post" class="inline-form">
+  <form action="{{ url_for('generar_email') }}" method="post" class="form-inputs">
     <input type="text" name="nombre" placeholder="Nombre" required>
     <input type="text" name="apellido" placeholder="Apellido" required>
     <input type="text" name="numero" placeholder="Número (opcional)">
-    <button type="submit" class="btn-primary">🚀 Generar</button>
+    <button type="submit">🚀 Generar</button>
   </form>
 
   <!-- ESTADÍSTICAS -->
   {% if total > 0 %}
-  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 15px; margin-top: 30px; margin-bottom: 30px;">
-    
-    <!-- Card: Total -->
-    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 15px; border-radius: 8px; text-align: center;">
-      <div style="font-size: 28px; font-weight: bold;">{{ total }}</div>
-      <div style="font-size: 12px; opacity: 0.9;">Total</div>
+  <div class="cards-row">
+    <div class="info-card info-card--blue">
+      <div class="info-card__label">Total</div>
+      <div class="info-card__value">{{ total }}</div>
     </div>
     
-    <!-- Card: Existen -->
-    <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 15px; border-radius: 8px; text-align: center;">
-      <div style="font-size: 28px; font-weight: bold;">{{ existe_count }}</div>
-      <div style="font-size: 12px; opacity: 0.9;">✅ Existen</div>
+    <div class="info-card info-card--green">
+      <div class="info-card__label">✅ Existen</div>
+      <div class="info-card__value">{{ existe_count }}</div>
     </div>
     
-    <!-- Card: No Existen -->
-    <div style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); color: white; padding: 15px; border-radius: 8px; text-align: center;">
-      <div style="font-size: 28px; font-weight: bold;">{{ no_existe_count }}</div>
-      <div style="font-size: 12px; opacity: 0.9;">❌ No Existen</div>
+    <div class="info-card">
+      <div class="info-card__label">❌ No Existen</div>
+      <div class="info-card__value">{{ no_existe_count }}</div>
     </div>
 
-    <!-- Card: Pendientes -->
-    <div style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: white; padding: 15px; border-radius: 8px; text-align: center;">
-      <div style="font-size: 28px; font-weight: bold;">{{ pendiente_count }}</div>
-      <div style="font-size: 12px; opacity: 0.9;">⏳ Pendientes</div>
+    <div class="info-card info-card--yellow">
+      <div class="info-card__label">⏳ Pendientes</div>
+      <div class="info-card__value">{{ pendiente_count }}</div>
     </div>
   </div>
   {% endif %}
 
   <!-- TABLA DE RESULTADOS -->
   {% if variantes %}
-  <div style="margin-top: 30px;">
-    <h4>📧 Resultados ({{ variantes|length }} variantes):</h4>
+  <div class="panel">
+    <div class="panel__header">
+      <h3 class="panel__title">📧 Resultados ({{ variantes|length }} variantes)</h3>
+    </div>
+    
     <table class="table--compact">
       <thead>
         <tr>
@@ -62,7 +60,7 @@
         <tr id="row-{{ v.email }}">
           <td><code>{{ v.email }}</code></td>
           <td>
-            <span id="status-{{ v.email }}" style="display: inline-block; padding: 6px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; background: #fef3c7; color: #92400e;">
+            <span id="status-{{ v.email }}" class="status-badge status-pending">
               ⏳ Verificando...
             </span>
           </td>
@@ -88,25 +86,21 @@
         
         if (!statusEl) return;
 
-        // Fetch al endpoint para obtener estado actualizado
         fetch(`/obtener-estado-email/${encodeURIComponent(v.email)}`)
           .then(r => r.json())
           .then(data => {
             if (data.existe === true) {
-              statusEl.style.background = '#d1fae5';
-              statusEl.style.color = '#065f46';
+              statusEl.className = 'status-badge status-exists';
               statusEl.innerHTML = '✅ Existe';
               btnCopiar.style.display = 'inline-block';
               btnVerificar.style.display = 'none';
             } else if (data.existe === false) {
-              statusEl.style.background = '#fee2e2';
-              statusEl.style.color = '#991b1b';
+              statusEl.className = 'status-badge status-not-exists';
               statusEl.innerHTML = '❌ No existe';
               btnVerificar.style.display = 'inline-block';
               btnCopiar.style.display = 'none';
             } else {
-              statusEl.style.background = '#fef3c7';
-              statusEl.style.color = '#92400e';
+              statusEl.className = 'status-badge status-pending';
               statusEl.innerHTML = '⏳ Verificando...';
               btnVerificar.style.display = 'none';
               btnCopiar.style.display = 'none';
@@ -116,18 +110,15 @@
       });
     }
 
-    // Actualizar cada 3 segundos
     setInterval(actualizarEstados, 3000);
-    
-    // Actualizar inmediatamente
     actualizarEstados();
   </script>
   {% endif %}
 
   <!-- INSTRUCCIONES -->
-  <div style="margin-top: 30px; background: #ede9fe; border-left: 4px solid #667eea; padding: 15px; border-radius: 6px;">
-    <h4 style="margin-top: 0; color: #667eea;">📋 Cómo funciona:</h4>
-    <ol style="margin: 10px 0; padding-left: 20px;">
+  <div class="instructions-box">
+    <h4>📋 Cómo funciona:</h4>
+    <ol>
       <li>Ingresa <strong>Nombre</strong> y <strong>Apellido</strong></li>
       <li>Haz click en "Generar"</li>
       <li>El sistema genera automáticamente variantes de emails</li>
@@ -141,36 +132,34 @@
 </div>
 
 <!-- MODAL: Instrucciones de verificación -->
-<div id="modal-verificar" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 1000; align-items: center; justify-content: center;">
-    <div style="background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: 20px; padding: 30px; max-width: 500px; width: 90%; color: var(--text-main);">
+<div id="modal-verificar" class="modal">
+    <div class="modal-content">
         
-        <button type="button" onclick="cerrarModal()" style="float: right; background: none; border: none; font-size: 24px; cursor: pointer; color: var(--text-muted);">✕</button>
+        <button type="button" onclick="cerrarModal()" class="modal-close">✕</button>
         
-        <h2 style="color: var(--text-main); margin-bottom: 20px; margin-top: 0;">📌 Cómo verificar</h2>
+        <h2>📌 Cómo verificar</h2>
         
-        <div style="background: rgba(34, 197, 94, 0.1); padding: 15px; border-left: 4px solid var(--accent); margin-bottom: 20px; border-radius: 8px;">
-            <p style="margin: 0; color: var(--text-main); font-size: 14px;">
-                <strong>Email a verificar:</strong> <span id="email-modal" style="font-family: monospace; color: var(--accent);"></span>
-            </p>
+        <div class="modal-email-box">
+            <p><strong>Email a verificar:</strong> <span id="email-modal" class="email-code"></span></p>
         </div>
         
-        <ol style="color: var(--text-main); line-height: 1.8; margin-bottom: 20px;">
+        <ol class="modal-instructions">
             <li><strong>Haz click en "Abrir Google"</strong> - Se abrirá en nueva pestaña</li>
             <li><strong>Fíjate si el email existe</strong> - Google mostrará si es válido</li>
             <li><strong>Vuelve a esta pestaña</strong> - Selecciona el resultado</li>
             <li><strong>Se guarda automáticamente</strong> - En tu base de datos</li>
         </ol>
         
-        <button type="button" id="btn-google" onclick="abrirGoogle()" style="width: 100%; padding: 12px; background-color: var(--accent); color: #022c22; border: none; border-radius: 999px; font-weight: 600; cursor: pointer; margin-bottom: 15px; font-size: 0.9rem;">
+        <button type="button" id="btn-google" onclick="abrirGoogle()" class="btn-modal-primary">
             🌐 Abrir Google
         </button>
         
-        <p style="color: var(--text-muted); font-size: 14px; margin-bottom: 10px;">¿Existe el email en Google?</p>
-        <div style="display: flex; gap: 10px;">
-            <button type="button" onclick="guardarResultado(true)" style="flex: 1; padding: 12px; background-color: #22c55e; color: #022c22; border: none; border-radius: 999px; font-weight: 600; cursor: pointer; font-size: 0.9rem;">
+        <p class="modal-question">¿Existe el email en Google?</p>
+        <div class="modal-buttons">
+            <button type="button" onclick="guardarResultado(true)" class="btn-modal-success">
                 ✅ Sí, existe
             </button>
-            <button type="button" onclick="guardarResultado(false)" style="flex: 1; padding: 12px; background-color: #ef4444; color: white; border: none; border-radius: 999px; font-weight: 600; cursor: pointer; font-size: 0.9rem;">
+            <button type="button" onclick="guardarResultado(false)" class="btn-modal-error">
                 ❌ No existe
             </button>
         </div>
@@ -188,7 +177,6 @@ function copiar(email) {
 }
 
 function verificarEmail(email, nombre, apellido) {
-    console.log("Email:", email, "Nombre:", nombre, "Apellido:", apellido);
     emailActual = email;
     nombreActual = nombre;
     apellidoActual = apellido;
@@ -231,8 +219,6 @@ function guardarResultado(existe) {
         apellido: apellidoActual
     };
     
-    console.log("Guardando:", data);
-    
     fetch("/guardar-verificacion-email", {
         method: "POST",
         headers: {
@@ -242,11 +228,9 @@ function guardarResultado(existe) {
     })
     .then(r => r.json())
     .then(res => {
-        console.log("Respuesta:", res);
         if (res.success) {
             alert("✅ Email guardado correctamente!");
             cerrarModal();
-            // Actualizar tabla sin recargar
             setTimeout(() => {
                 actualizarEstados();
             }, 500);
