@@ -393,10 +393,11 @@ verificador = VerificadorConSelenium(supabase)
 
 
 # 🚀 ACTIVAR EN PRODUCCIÓN - Headless (sin ventana)
-if verificador.chrome_driver_path or not verificador.is_production:
+# En Render, Selenium no funciona. Solo en local.
+if not verificador.is_production:
     verificador.iniciar_verificacion_automatica(mostrar_ventana=False)
 else:
-    print("[INIT] ⚠️ Selenium desactivado: ChromeDriver no disponible")
+    print("[INIT] ⚠️ Selenium desactivado en Render")
 
 
 
