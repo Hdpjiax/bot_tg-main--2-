@@ -1,66 +1,40 @@
 import os
 from datetime import datetime, timedelta
 import requests
-import json
-from collections import Counter
-from google.auth.transport.requests import Request
-from google.oauth2.service_account import Credentials
 from flask import (
     Flask, render_template, request,
     redirect, url_for, flash, jsonify
 )
 from supabase import create_client, Client
 from telegram import Bot, InputMediaPhoto
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
 import logging
 logging.getLogger('WDM').setLevel(logging.CRITICAL)
 from urllib.parse import quote
-import threading
-import time
-
 
 
 # ============================================================================
 # CONFIG
 # ============================================================================
 
-
-
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
-
-
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 bot = Bot(token=BOT_TOKEN)
 
-
-
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "cambia_esto")
-
-
 
 
 # ============================================================================
 # FUNCIONES AUXILIARES
 # ============================================================================
 
-
-
 def rango_proximos():
     hoy = datetime.utcnow().date()
     hasta = hoy + timedelta(days=5)
     return hoy, hasta
-
-
 
 
 def enviar_mensaje(chat_id: int, texto: str):
@@ -70,8 +44,6 @@ def enviar_mensaje(chat_id: int, texto: str):
     r.raise_for_status()
 
 
-
-    
 def enviar_foto(chat_id: int, fileobj, caption: str = ""):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto"
     files = {"photo": (fileobj.filename, fileobj.stream, fileobj.mimetype)}
@@ -80,13 +52,9 @@ def enviar_foto(chat_id: int, fileobj, caption: str = ""):
     r.raise_for_status()
 
 
-
-
 # ============================================================================
 # EMAIL GENERATOR - CLASES
 # ============================================================================
-
-
 
 class EmailGenerado:
     """Modelo para emails generados en la BD"""
@@ -95,14 +63,15 @@ class EmailGenerado:
         self.db = supabase_client
         self.table = "emails_generados"
     
-    def crear(self, email, nombre, apellido, existe=None):
+    def crear(self, email, nombre, apellido, proveedor, existe=None):
         """Crea un nuevo email en la BD"""
         try:
             data = {
                 "email": email,
                 "nombre": nombre,
                 "apellido": apellido,
-                "existe_en_google": existe,
+                "proveedor": proveedor,
+                "existe_en_proveedor": existe,
                 "verificado_en": datetime.now().isoformat() if existe is not None else None,
                 "created_at": datetime.now().isoformat()
             }
@@ -116,7 +85,7 @@ class EmailGenerado:
         """Actualiza el estado de un email"""
         try:
             data = {
-                "existe_en_google": existe,
+                "existe_en_proveedor": existe,
                 "verificado_en": datetime.now().isoformat()
             }
             response = self.db.table(self.table).update(data).eq("email", email).execute()
@@ -139,9 +108,9 @@ class EmailGenerado:
         try:
             all_emails = self.obtener_todos()
             total = len(all_emails)
-            existe_count = len([e for e in all_emails if e.get("existe_en_google") == True])
-            no_existe_count = len([e for e in all_emails if e.get("existe_en_google") == False])
-            pendiente_count = len([e for e in all_emails if e.get("existe_en_google") is None])
+            existe_count = len([e for e in all_emails if e.get("existe_en_proveedor") == True])
+            no_existe_count = len([e for e in all_emails if e.get("existe_en_proveedor") == False])
+            pendiente_count = len([e for e in all_emails if e.get("existe_en_proveedor") is None])
             return {
                 "total": total,
                 "existe_count": existe_count,
@@ -153,275 +122,91 @@ class EmailGenerado:
             return {"total": 0, "existe_count": 0, "no_existe_count": 0, "pendiente_count": 0}
 
 
-
-
 def generar_variantes(nombre, apellido, numero=""):
-    """Genera variantes de emails basadas en nombre y apellido"""
+    """Genera 20 variantes de emails con múltiples proveedores"""
     nombre = nombre.lower().strip()
     apellido = apellido.lower().strip()
     numero = numero.strip() if numero else ""
     
-    variantes = set()
+    variantes = []
     iniciales = nombre[0] + apellido[0]
     
-    variantes.add(f"{nombre}.{apellido}")
-    variantes.add(f"{nombre}{apellido}")
-    variantes.add(f"{apellido}.{nombre}")
-    variantes.add(f"{apellido}{nombre}")
-    variantes.add(iniciales)
-    variantes.add(f"{nombre[0]}.{apellido}")
-    variantes.add(f"{apellido}.{nombre[0]}")
+    # Bases de emails sin dominio
+    bases = [
+        f"{nombre}.{apellido}",
+        f"{nombre}{apellido}",
+        f"{apellido}.{nombre}",
+        f"{apellido}{nombre}",
+        iniciales,
+        f"{nombre[0]}.{apellido}",
+        f"{apellido}.{nombre[0]}",
+    ]
     
     if numero:
-        variantes.add(f"{nombre}{numero}")
-        variantes.add(f"{apellido}{numero}")
-        variantes.add(f"{nombre}.{numero}")
-        variantes.add(f"{nombre}{apellido}{numero}")
+        bases.extend([
+            f"{nombre}{numero}",
+            f"{apellido}{numero}",
+            f"{nombre}.{numero}",
+            f"{nombre}{apellido}{numero}",
+        ])
     
-    variantes_gmail = [f"{v}@gmail.com" for v in variantes]
-    return sorted(list(variantes_gmail))
-
-
-
-
-def generar_url_verificacion_google(email):
-    """Genera la URL para verificar un email en Google"""
-    email_encoded = quote(email.split('@')[0])
-    url = f"https://accounts.google.com/signin/recovery?email={email_encoded}"
-    return url
-
-
-
-
-# ============================================================================
-# VERIFICADOR CON SELENIUM (PRODUCCIÓN)
-# ============================================================================
-
-
-class VerificadorConSelenium:
-    """Verifica emails con Selenium en background"""
+    # Proveedores de email
+    proveedores = ["gmail.com", "yahoo.com", "outlook.com"]
     
-    def __init__(self, supabase_client):
-        self.db = supabase_client
-        self.table = "emails_generados"
-        self.is_production = os.getenv('RENDER') is not None
-        self.chrome_driver_path = None
-        self._inicializar_chromedriver()
+    # Generar máximo 20 variantes
+    for base in bases[:7]:  # Usar máximo 7 bases
+        for proveedor in proveedores:
+            if len(variantes) < 20:
+                email = f"{base}@{proveedor}"
+                variantes.append({
+                    "email": email,
+                    "proveedor": proveedor.split('.')[0].upper(),
+                    "base": base
+                })
     
-    def _inicializar_chromedriver(self):
-        """Inicializa el ChromeDriver correctamente"""
-        try:
-            if self.is_production:
-                # En Render, usar chromium del sistema
-                self.chrome_driver_path = '/usr/bin/chromium-browser'
-                if not os.path.exists(self.chrome_driver_path):
-                    print("[INIT] ⚠️ Chromium no encontrado en producción")
-                    self.chrome_driver_path = None
-            else:
-                # En local, descargar con webdriver-manager
-                service = Service(ChromeDriverManager().install())
-                self.chrome_driver_path = service.path
-                print(f"[INIT] ✅ ChromeDriver inicializado: {self.chrome_driver_path}")
-        except Exception as e:
-            print(f"[INIT] ⚠️ Error inicializando ChromeDriver: {e}")
-            self.chrome_driver_path = None
-    
-    def verificar_email_en_google(self, email, mostrar_ventana=False):
-        """
-        Abre Chrome y verifica si el email existe
-        mostrar_ventana=False → ventana HEADLESS (recomendado producción)
-        mostrar_ventana=True → ventana VISIBLE (desarrollo)
-        """
-        driver = None
-        try:
-            # Validar que tengamos ChromeDriver
-            if not self.chrome_driver_path and self.is_production:
-                print(f"[SELENIUM] ❌ ChromeDriver no disponible en producción")
-                return None
-            
-            # Configurar Chrome
-            chrome_options = Options()
-            
-            # HEADLESS por defecto
-            if not mostrar_ventana or self.is_production:
-                chrome_options.add_argument("--headless=new")
-            
-            # Optimizaciones para producción
-            chrome_options.add_argument("--no-sandbox")
-            chrome_options.add_argument("--disable-dev-shm-usage")
-            chrome_options.add_argument("--disable-gpu")
-            chrome_options.add_argument("--disable-extensions")
-            chrome_options.add_argument("--disable-plugins")
-            chrome_options.add_argument("--disable-sync")
-            chrome_options.add_argument("--disable-translate")
-            chrome_options.add_argument("--disable-blink-features=AutomationControlled")
-            chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-            
-            # En producción, usar Chromium del sistema
-            if self.is_production and self.chrome_driver_path:
-                service = Service(self.chrome_driver_path)
-            else:
-                # En local, usar webdriver-manager
-                try:
-                    service = Service(ChromeDriverManager().install())
-                except Exception as e:
-                    print(f"[SELENIUM] Error obteniendo ChromeDriver: {e}")
-                    return None
-            
-            # Crear driver
-            driver = webdriver.Chrome(service=service, options=chrome_options)
-            driver.set_page_load_timeout(15)
-            
-            # URL de Google Account Recovery
-            email_part = email.split('@')[0]
-            url = f"https://accounts.google.com/signin/recovery?email={email_part}"
-            
-            print(f"[SELENIUM] 🌐 Verificando: {email}")
-            
-            driver.get(url)
-            time.sleep(3)
-            
-            # Esperar elementos
-            try:
-                WebDriverWait(driver, 10).until(
-                    EC.presence_of_all_elements_located((By.TAG_NAME, "input"))
-                )
-            except:
-                print(f"[SELENIUM] ⚠️ Timeout cargando elementos para {email}")
-            
-            time.sleep(2)
-            
-            # Buscar si el email existe
-            html = driver.page_source.lower()
-            
-            # Keywords que indican NO existe
-            no_existe_keywords = [
-                "no encontramos",
-                "no hemos encontrado",
-                "not found",
-                "account not found",
-                "cuenta no encontrada",
-                "this account doesn't exist",
-                "couldn't find"
-            ]
-            
-            existe = True
-            for keyword in no_existe_keywords:
-                if keyword in html:
-                    existe = False
-                    break
-            
-            return existe
-        
-        except Exception as e:
-            print(f"[SELENIUM] ❌ Error: {e}")
-            return None
-        
-        finally:
-            if driver:
-                try:
-                    driver.quit()
-                except:
-                    pass
-    
-    def procesar_pendientes(self, mostrar_ventana=False):
-        """Procesa todos los emails pendientes"""
-        try:
-            response = self.db.table(self.table).select("*").is_("existe_en_google", None).execute()
-            pendientes = response.data if response.data else []
-            
-            if not pendientes:
-                print(f"[SELENIUM] ✓ No hay emails pendientes\n")
-                return
-            
-            print(f"\n[SELENIUM] 🚀 INICIANDO VERIFICACIÓN")
-            print(f"[SELENIUM] 📧 Emails pendientes: {len(pendientes)}\n")
-            
-            for idx, email_record in enumerate(pendientes, 1):
-                email = email_record.get("email")
-                
-                if not email:
-                    continue
-                
-                print(f"[SELENIUM] [{idx}/{len(pendientes)}] {email}")
-                
-                # Verificar con Selenium
-                existe = self.verificar_email_en_google(email, mostrar_ventana=mostrar_ventana)
-                
-                if existe is not None:
-                    try:
-                        self.db.table(self.table).update({
-                            "existe_en_google": existe,
-                            "verificado_en": datetime.now().isoformat()
-                        }).eq("email", email).execute()
-                        
-                        status = "✅ EXISTE" if existe else "❌ NO EXISTE"
-                        print(f"[SELENIUM] {status}")
-                    except Exception as e:
-                        print(f"[SELENIUM] Error BD: {e}")
-                else:
-                    print(f"[SELENIUM] ⚠️ Error verificando")
-                
-                time.sleep(2)
-            
-            print(f"\n[SELENIUM] ✅ Ciclo completado\n")
-        
-        except Exception as e:
-            print(f"[SELENIUM] Error en proceso: {e}")
-    
-    def iniciar_verificacion_automatica(self, mostrar_ventana=False):
-        """Inicia verificación automática en background cada 60s"""
-        def worker():
-            print("\n[SELENIUM] ⏰ Sistema listo. Verificará cada 60 segundos...\n")
-            while True:
-                self.procesar_pendientes(mostrar_ventana=mostrar_ventana)
-                time.sleep(60)
-        
-        thread = threading.Thread(target=worker, daemon=True)
-        thread.start()
-        print("\n[SELENIUM] ✅ Sistema iniciado en BACKGROUND\n")
+    return variantes[:20]  # Retornar máximo 20
 
 
+def generar_url_verificacion(email, proveedor):
+    """Genera la URL de verificación según el proveedor"""
+    email_part = email.split('@')[0]
+    
+    urls = {
+        "gmail.com": f"https://accounts.google.com/signin/recovery?email={email_part}",
+        "yahoo.com": f"https://login.yahoo.com/account/recovery?email={email}",
+        "outlook.com": f"https://login.live.com/login.srf?wa=wsignin1.0"
+    }
+    
+    return urls.get(proveedor, urls["gmail.com"])
 
 
 # Inicializar modelo
 email_model = EmailGenerado(supabase)
 
 
-# Inicializar Selenium
-verificador = VerificadorConSelenium(supabase)
-
-
-# 🚀 ACTIVAR EN PRODUCCIÓN - Headless (sin ventana)
-# En Render, Selenium no funciona. Solo en local.
-if not verificador.is_production:
-    verificador.iniciar_verificacion_automatica(mostrar_ventana=False)
-else:
-    print("[INIT] ⚠️ Selenium desactivado en Render")
-
-
-
 # ============================================================================
 # RUTAS - MAIL GENERATOR
 # ============================================================================
 
-
-
 @app.route('/mail-generator', methods=['GET'])
 def mail_generator():
     """Página principal del generador"""
-    variantes = request.args.get('variantes')
+    variantes_param = request.args.get('variantes')
     nombre = request.args.get('nombre', '')
     apellido = request.args.get('apellido', '')
     
     stats = email_model.obtener_estadisticas()
     
-    if variantes:
-        variantes_list = variantes.split(',')
-        variantes_data = [
-            {"email": v, "existe": None}
-            for v in variantes_list
-        ]
+    if variantes_param:
+        variantes_data = []
+        for v_str in variantes_param.split('|||'):
+            if v_str:
+                email, proveedor = v_str.split('::')
+                variantes_data.append({
+                    "email": email,
+                    "proveedor": proveedor,
+                    "existe": None
+                })
     else:
         variantes_data = None
     
@@ -435,8 +220,6 @@ def mail_generator():
         no_existe_count=stats['no_existe_count'],
         pendiente_count=stats.get('pendiente_count', 0)
     )
-
-
 
 
 @app.route('/generar_email', methods=['POST'])
@@ -462,16 +245,15 @@ def generar_email():
     
     variantes = generar_variantes(nombre, apellido, numero)
     
-    variantes_data = []
-    for email in variantes:
-        email_model.crear(email, nombre, apellido)
-        variantes_data.append({"email": email, "existe": None})
+    # Guardar en BD
+    for v in variantes:
+        email_model.crear(v['email'], nombre, apellido, v['proveedor'])
     
     stats = email_model.obtener_estadisticas()
     
     return render_template(
         'mail_generator.html',
-        variantes=variantes_data,
+        variantes=variantes,
         nombre=nombre,
         apellido=apellido,
         total=stats['total'],
@@ -481,15 +263,11 @@ def generar_email():
     )
 
 
-
-
-@app.route('/verificar-email-gmail/<email>', methods=['GET'])
-def verificar_email_gmail(email):
-    """Retorna la URL para verificar en Google (backup manual)"""
-    url = generar_url_verificacion_google(email)
+@app.route('/verificar-email/<email>/<proveedor>', methods=['GET'])
+def verificar_email(email, proveedor):
+    """Abre la página de verificación del proveedor"""
+    url = generar_url_verificacion(email, proveedor)
     return jsonify({"url": url})
-
-
 
 
 @app.route('/guardar-verificacion-email', methods=['POST'])
@@ -512,8 +290,6 @@ def guardar_verificacion_email():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
-
-
 @app.route('/mail-generados', methods=['GET'])
 def mail_generados():
     """Página de historial"""
@@ -529,15 +305,14 @@ def mail_generados():
     )
 
 
-
 @app.route('/obtener-estado-email/<email>', methods=['GET'])
 def obtener_estado_email(email):
     """Retorna estado actual del email en JSON"""
     try:
-        response = supabase.table("emails_generados").select("existe_en_google").eq("email", email).single().execute()
+        response = supabase.table("emails_generados").select("existe_en_proveedor").eq("email", email).single().execute()
         
         if response.data:
-            existe = response.data.get("existe_en_google")
+            existe = response.data.get("existe_en_proveedor")
             return jsonify({
                 "email": email,
                 "existe": existe
@@ -555,12 +330,9 @@ def obtener_estado_email(email):
         }), 500
 
 
-
 # ============================================================================
 # RUTAS - GENERAL / ESTADÍSTICAS
 # ============================================================================
-
-
 
 @app.route("/vuelo/<int:vuelo_id>")
 def detalle_vuelo(vuelo_id):
@@ -575,22 +347,17 @@ def detalle_vuelo(vuelo_id):
         flash("Vuelo no encontrado.", "error")
         return redirect(url_for("historial"))
 
-
     vuelo = res.data
     return render_template("detalle_vuelo.html", vuelo=vuelo)
-
-
 
 
 @app.route("/accion/borrar_vuelo", methods=["POST"])
 def borrar_vuelo():
     v_id = request.form.get("id")
 
-
     if not v_id:
         flash("Falta ID de vuelo.", "error")
         return redirect(url_for("historial"))
-
 
     res = (
         supabase.table("cotizaciones")
@@ -603,24 +370,19 @@ def borrar_vuelo():
         flash("Vuelo no encontrado.", "error")
         return redirect(url_for("historial"))
 
-
     if res.data["estado"] in ["Pago Confirmado", "QR Enviados"]:
         flash("No se puede borrar un vuelo ya pagado o con QR.", "error")
         return redirect(url_for("detalle_vuelo", vuelo_id=v_id))
-
 
     supabase.table("cotizaciones").delete().eq("id", v_id).execute()
     flash("Vuelo borrado correctamente.", "success")
     return redirect(url_for("historial"))
 
 
-
-
 @app.route("/")
 def general():
     hoy = datetime.utcnow().date()
     manana = hoy + timedelta(days=1)
-
 
     res_usuarios = (
         supabase.table("cotizaciones")
@@ -631,7 +393,6 @@ def general():
     usernames = [r["username"] for r in res_usuarios if r.get("username")]
     usuarios_unicos = len(set(usernames))
 
-
     res_total = (
         supabase.table("cotizaciones")
         .select("monto")
@@ -640,7 +401,6 @@ def general():
         .data
     )
     total_recaudado = sum(float(r["monto"]) for r in res_total if r["monto"])
-
 
     urgentes = (
         supabase.table("cotizaciones")
@@ -652,8 +412,7 @@ def general():
         .order("created_at", desc=True)
         .execute()
         .data
-    )  
-
+    )
 
     return render_template(
         "general.html",
@@ -664,13 +423,9 @@ def general():
     )
 
 
-
-
 # ============================================================================
 # RUTAS - POR COTIZAR
 # ============================================================================
-
-
 
 @app.route("/por-cotizar")
 def por_cotizar():
@@ -685,19 +440,15 @@ def por_cotizar():
     return render_template("por_cotizar.html", vuelos=pendientes)
 
 
-
-
 @app.route("/accion/cotizar", methods=["POST"])
 def accion_cotizar():
     v_id = request.form.get("id")
     monto_total = request.form.get("monto_total")
     porcentaje = request.form.get("porcentaje")
 
-
     if not v_id or not monto_total or not porcentaje:
         flash("Falta ID, monto total o porcentaje.", "error")
         return redirect(url_for("por_cotizar"))
-
 
     try:
         monto_total = float(monto_total)
@@ -706,22 +457,18 @@ def accion_cotizar():
         flash("Monto o porcentaje inválidos.", "error")
         return redirect(url_for("por_cotizar"))
 
-
     monto_cobrar = round(monto_total * (porcentaje / 100.0), 2)
-
 
     res = (
         supabase.table("cotizaciones")
         .update({"monto": monto_cobrar, "estado": "Cotizado"})
         .eq("id", v_id)
         .execute()
-    )  
-
+    )
 
     if not res.data:
         flash("No se encontró el vuelo.", "error")
         return redirect(url_for("por_cotizar"))
-
 
     user_id_raw = res.data[0]["user_id"]
     try:
@@ -731,14 +478,12 @@ def accion_cotizar():
         flash("Cotización guardada, pero user_id inválido.", "error")
         return redirect(url_for("por_cotizar"))
 
-
     texto = (
         f"💰 Tu vuelo ID {v_id} ha sido cotizado.\n"
         f"Monto a pagar: {monto_cobrar}\n"
         f"(Equivale al {porcentaje}% del total)\n\n"
         "Cuando tengas tu comprobante usa el botón \"📸 Enviar Pago\" en el bot."
     )
-
 
     try:
         enviar_mensaje(user_id, texto)
@@ -747,17 +492,12 @@ def accion_cotizar():
         app.logger.error(f"Error Telegram: {e}")
         flash("Cotización guardada pero no se notificó al usuario.", "error")
 
-
     return redirect(url_for("por_cotizar"))
-
-
 
 
 # ============================================================================
 # RUTAS - VALIDAR PAGOS
 # ============================================================================
-
-
 
 @app.route("/validar-pagos")
 def validar_pagos():
@@ -772,17 +512,13 @@ def validar_pagos():
     return render_template("validar_pagos.html", vuelos=pendientes)
 
 
-
-
 @app.route("/accion/confirmar_pago", methods=["POST"])
 def accion_confirmar_pago():
     v_id = request.form.get("id")
 
-
     if not v_id:
         flash("Falta ID.", "error")
         return redirect(url_for("validar_pagos"))
-
 
     res = (
         supabase.table("cotizaciones")
@@ -791,11 +527,9 @@ def accion_confirmar_pago():
         .execute()
     )
 
-
     if not res.data:
         flash("No se encontró el vuelo.", "error")
         return redirect(url_for("validar_pagos"))
-
 
     user_id_raw = res.data[0]["user_id"]
     try:
@@ -805,12 +539,10 @@ def accion_confirmar_pago():
         flash("Pago confirmado pero user_id inválido.", "error")
         return redirect(url_for("validar_pagos"))
 
-
     texto = (
         f"✅ Tu pago para el vuelo ID {v_id} ha sido confirmado.\n"
         "En breve recibirás tus códigos QR."
     )
-
 
     try:
         enviar_mensaje(user_id, texto)
@@ -819,17 +551,12 @@ def accion_confirmar_pago():
         app.logger.error(f"Error Telegram: {e}")
         flash("Pago confirmado pero no se notificó.", "error")
 
-
     return redirect(url_for("validar_pagos"))
-
-
 
 
 # ============================================================================
 # RUTAS - POR ENVIAR QR
 # ============================================================================
-
-
 
 @app.route("/por-enviar-qr")
 def por_enviar_qr():
@@ -844,18 +571,14 @@ def por_enviar_qr():
     return render_template("por_enviar_qr.html", vuelos=pendientes)
 
 
-
-
 @app.route("/accion/enviar_qr", methods=["POST"])
 def accion_enviar_qr():
     v_id = request.form.get("id")
     fotos = request.files.getlist("fotos")
 
-
     if not v_id:
         flash("Falta ID de vuelo.", "error")
         return redirect(url_for("por_enviar_qr"))
-
 
     res = (
         supabase.table("cotizaciones")
@@ -865,11 +588,9 @@ def accion_enviar_qr():
         .execute()
     )
 
-
     if not res.data:
         flash("No se encontró el vuelo.", "error")
         return redirect(url_for("por_enviar_qr"))
-
 
     user_id_raw = res.data["user_id"]
     try:
@@ -879,11 +600,9 @@ def accion_enviar_qr():
         flash("No se pudieron enviar QRs: user_id inválido.", "error")
         return redirect(url_for("por_enviar_qr"))
 
-
     if not fotos or fotos[0].filename == "":
         flash("Adjunta al menos una imagen de QR.", "error")
         return redirect(url_for("por_enviar_qr"))
-
 
     instrucciones = (
         f"🎫 INSTRUCCIONES ID: {v_id}\n\n"
@@ -897,40 +616,30 @@ def accion_enviar_qr():
         "llegar al aeropuerto y escanear directamente."
     )
 
-
     try:
         enviar_mensaje(user_id, instrucciones)
-
 
         for idx, f in enumerate(fotos):
             caption = f"Códigos QR vuelo ID {v_id}" if idx == 0 else ""
             enviar_foto(user_id, f, caption=caption)
 
-
         enviar_mensaje(user_id, "🎉 Disfruta tu vuelo.")
-
 
         supabase.table("cotizaciones").update(
             {"estado": "QR Enviados"}
         ).eq("id", v_id).execute()
-
 
         flash("QRs enviados correctamente.", "success")
     except Exception as e:
         app.logger.error(f"Error enviando QRs: {e}")
         flash("No se pudieron enviar los QRs al usuario.", "error")
 
-
     return redirect(url_for("por_enviar_qr"))
-
-
 
 
 # ============================================================================
 # RUTAS - PRÓXIMOS VUELOS
 # ============================================================================
-
-
 
 @app.route("/proximos-vuelos")
 def proximos_vuelos():
@@ -947,12 +656,9 @@ def proximos_vuelos():
     return render_template("proximos_vuelos.html", vuelos=proximos)
 
 
-
 # ============================================================================
 # RUTAS - HISTORIAL
 # ============================================================================
-
-
 
 @app.route("/historial")
 def historial():
@@ -967,8 +673,6 @@ def historial():
     return render_template("historial.html", vuelos=vuelos)
 
 
-
-
 @app.route("/historial-usuario/<username>")
 def historial_usuario(username):
     vuelos = (
@@ -980,18 +684,15 @@ def historial_usuario(username):
         .data
     )
 
-
     total_pagado = sum(
         float(v["monto"]) for v in vuelos
         if v.get("monto") and v.get("estado") in ["Pago Confirmado", "QR Enviados"]
     )
 
-
     pagos_confirmados = sum(
         1 for v in vuelos
         if v.get("estado") in ["Pago Confirmado", "QR Enviados"]
     )
-
 
     return render_template(
         "historial_usuario.html",
@@ -1002,13 +703,9 @@ def historial_usuario(username):
     )
 
 
-
-
 # ============================================================================
 # MAIN
 # ============================================================================
-
-
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))

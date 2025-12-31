@@ -1,11 +1,11 @@
 {% extends "base.html" %}
 
-{% block titulo %}Emails Generados{% endblock %}
-{% block subtitulo %}Historial de todos los emails verificados.{% endblock %}
+{% block titulo %}Historial de Emails{% endblock %}
+{% block subtitulo %}Todos los emails generados y verificados.{% endblock %}
 
 {% block contenido %}
 <div class="glass card">
-  <h3>📊 Historial de Emails Verificados</h3>
+  <h3>📊 Historial de Emails</h3>
 
   <!-- ESTADÍSTICAS -->
   <div class="cards-row">
@@ -14,58 +14,66 @@
       <div class="info-card__value">{{ total }}</div>
     </div>
     <div class="info-card info-card--green">
-      <div class="info-card__label">Existen en Google</div>
+      <div class="info-card__label">✅ Verificados</div>
       <div class="info-card__value">{{ existe_count }}</div>
     </div>
     <div class="info-card info-card--yellow">
-      <div class="info-card__label">No Existen</div>
+      <div class="info-card__label">❌ No Existen</div>
       <div class="info-card__value">{{ no_existe_count }}</div>
     </div>
   </div>
 
   <!-- TABLA -->
   {% if emails %}
-  <table class="table--compact">
-    <thead>
-      <tr>
-        <th>Email</th>
-        <th>Nombre</th>
-        <th>Apellido</th>
-        <th>Existe</th>
-        <th>Verificado en</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for e in emails %}
-      <tr>
-        <td><code>{{ e.email }}</code></td>
-        <td>{{ e.nombre or '-' }}</td>
-        <td>{{ e.apellido or '-' }}</td>
-        <td>
-          {% if e.existe_en_google == True %}
-            <span style="color: #22c55e; font-weight: bold;">✅ Sí</span>
-          {% elif e.existe_en_google == False %}
-            <span style="color: #ef4444; font-weight: bold;">❌ No</span>
-          {% else %}
-            <span style="color: #9ca3af;">⏳ Pendiente</span>
-          {% endif %}
-        </td>
-        <td>
-          {% if e.verificado_en %}
-            {{ e.verificado_en[:10] }}
-          {% else %}
-            -
-          {% endif %}
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <div class="panel">
+    <div class="panel__header">
+      <h3 class="panel__title">📧 Emails ({{ emails|length }} total)</h3>
+    </div>
+
+    <table class="table--compact">
+      <thead>
+        <tr>
+          <th>Email</th>
+          <th>Nombre</th>
+          <th>Proveedor</th>
+          <th>Existe</th>
+          <th>Fecha</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for e in emails %}
+        <tr>
+          <td><code>{{ e.email }}</code></td>
+          <td>{{ e.nombre }} {{ e.apellido or '' }}</td>
+          <td>
+            <span class="badge-proveedor">{{ e.proveedor or 'N/A' }}</span>
+          </td>
+          <td>
+            {% if e.existe_en_proveedor == True %}
+              <span class="status-badge status-exists">✅ Sí</span>
+            {% elif e.existe_en_proveedor == False %}
+              <span class="status-badge status-not-exists">❌ No</span>
+            {% else %}
+              <span class="status-badge status-pending">⏳ Pendiente</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if e.created_at %}
+              {{ e.created_at[:10] }}
+            {% else %}
+              -
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 
   {% else %}
   <div style="text-align: center; padding: 40px; background: rgba(34, 197, 94, 0.1); border-radius: 12px;">
     <p style="color: var(--text-muted); margin: 0;">
-      📭 No hay emails generados aún. <a href="{{ url_for('mail_generator') }}" style="color: var(--accent); font-weight: 600; text-decoration: none;">Genera uno ahora</a>
+      📭 No hay emails generados aún. <a href="{{ url_for('mail_generator') }}" style="color: var(--accent); font-weight: 600; text-decoration: none;">Genera uno ahora →</a>
     </p>
   </div>
   {% endif %}
@@ -74,7 +82,7 @@
 <!-- Botones de navegación -->
 <div style="margin-top: 20px; display: flex; gap: 10px;">
   <a href="{{ url_for('mail_generator') }}" class="btn-link">← Volver al Generador</a>
-  <a href="{{ url_for('general') }}" class="btn-link">← Volver al Dashboard</a>
+  <a href="{{ url_for('general') }}" class="btn-link">← Dashboard</a>
 </div>
 
 {% endblock %}
