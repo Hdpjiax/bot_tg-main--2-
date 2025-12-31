@@ -3,7 +3,6 @@ from datetime import datetime, timedelta
 import requests
 import json
 from collections import Counter
-import requests
 from urllib.parse import urlencode, quote
 from google.auth.transport.requests import Request
 from google.oauth2.service_account import Credentials
@@ -13,13 +12,9 @@ from flask import (
 )
 from supabase import create_client, Client
 from telegram import Bot, InputMediaPhoto
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.chrome.options import Options
 import threading
 import time
+import httpx
 
 
 # ============================================================================
@@ -166,80 +161,65 @@ def generar_url_verificacion_google(email):
 
 
 # ============================================================================
-# VERIFICADOR AUTOMÁTICO CON SELENIUM
+# VERIFICADOR AUTOMÁTICO SIN SELENIUM (USANDO API)
 # ============================================================================
 
 class VerificadorAutomatico:
-    """Verifica automáticamente si emails existen en Google"""
+    """Verifica automáticamente si emails existen en Google usando API"""
     
     def __init__(self, supabase_client):
         self.db = supabase_client
         self.table = "emails_generados"
     
     def verificar_email_en_google(self, email):
-        """Verifica si un email existe en Google de forma automática"""
-        driver = None
+        """
+        Verifica si un email existe en Google
+        Usa un método basado en HTTP requests
+        """
         try:
-            chrome_options = Options()
-            chrome_options.add_argument("--headless")
-            chrome_options.add_argument("--no-sandbox")
-            chrome_options.add_argument("--disable-dev-shm-usage")
-            chrome_options.add_argument("--disable-blink-features=AutomationControlled")
-            chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-            chrome_options.add_argument("--window-size=1920,1080")
+            # Método 1: Intentar enviar a Google Accounts
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            }
             
-            driver = webdriver.Chrome(options=chrome_options)
-            driver.set_page_load_timeout(15)
+            # Ir a la página de recuperación de Google
+            url = f"https://accounts.google.com/signin/recovery?email={email.split('@')[0]}"
             
-            email_part = email.split('@')[0]
-            url = f"https://accounts.google.com/signin/recovery?email={email_part}"
+            response = httpx.get(url, headers=headers, timeout=10, follow_redirects=True)
             
-            driver.get(url)
-            time.sleep(3)
+            # Si el email existe, Google no redirige a una página de error
+            # Si el email NO existe, Google muestra un mensaje de error
             
-            try:
-                WebDriverWait(driver, 10).until(
-                    EC.presence_of_all_elements_located((By.TAG_NAME, "input"))
-                )
-            except:
-                pass
-            
-            time.sleep(2)
-            
-            # Buscar mensaje de error
-            try:
-                # Intenta encontrar el elemento de error
-                error_messages = [
-                    "//*[contains(text(), 'No encontramos')]",
-                    "//*[contains(text(), 'No hemos encontrado')]",
-                    "//*[contains(text(), 'cuenta')]//span[contains(text(), 'No')]"
+            if response.status_code == 200:
+                # Buscar keywords que indican que el email NO existe
+                texto = response.text.lower()
+                
+                no_existe_keywords = [
+                    "no encontramos",
+                    "no hemos encontrado",
+                    "not found",
+                    "account not found",
+                    "cuenta no encontrada"
                 ]
                 
-                encontrado_error = False
-                for xpath in error_messages:
-                    try:
-                        driver.find_element(By.XPATH, xpath)
-                        encontrado_error = True
-                        break
-                    except:
-                        continue
+                existe = True  # Por defecto asume que existe
                 
-                resultado = not encontrado_error  # Si hay error, no existe
-            except:
-                resultado = True  # Asume que existe si no hay error
-            
-            return resultado
+                for keyword in no_existe_keywords:
+                    if keyword in texto:
+                        existe = False
+                        break
+                
+                return existe
+            else:
+                # Si hay error HTTP, asume que existe
+                return True
         
+        except httpx.TimeoutException:
+            print(f"[AUTO] Timeout verificando {email}")
+            return None
         except Exception as e:
             print(f"[AUTO] Error verificando {email}: {e}")
             return None
-        
-        finally:
-            if driver:
-                try:
-                    driver.quit()
-                except:
-                    pass
     
     def procesar_pendientes_automatico(self):
         """Procesa TODOS los emails pendientes automáticamente"""
@@ -272,7 +252,7 @@ class VerificadorAutomatico:
                     except Exception as e:
                         print(f"[AUTO] Error actualizando BD: {e}")
                 
-                time.sleep(2)
+                time.sleep(1)  # Esperar entre verificaciones
         
         except Exception as e:
             print(f"[AUTO] Error en proceso: {e}")
@@ -282,7 +262,7 @@ class VerificadorAutomatico:
         def worker():
             while True:
                 self.procesar_pendientes_automatico()
-                time.sleep(60)  # Esperar 60 segundos entre verificaciones
+                time.sleep(30)  # Esperar 30 segundos entre verificaciones
         
         thread = threading.Thread(target=worker, daemon=True)
         thread.start()
