@@ -66,6 +66,14 @@ class EmailGenerado:
     def crear(self, email, nombre, apellido, proveedor, existe=None):
         """Crea un nuevo email en la BD"""
         try:
+            # Primero verificar si ya existe
+            response = self.db.table(self.table).select("*").eq("email", email).execute()
+            
+            if response.data:
+                # Ya existe, no duplicar
+                return response.data[0]
+            
+            # Si no existe, crear nuevo
             data = {
                 "email": email,
                 "nombre": nombre,
@@ -172,12 +180,12 @@ def generar_url_verificacion(email, proveedor):
     email_part = email.split('@')[0]
     
     urls = {
-        "gmail.com": f"https://accounts.google.com/signin/recovery?email={email_part}",
-        "yahoo.com": f"https://login.yahoo.com/account/recovery?email={email}",
-        "outlook.com": f"https://login.live.com/login.srf?wa=wsignin1.0"
+        "GMAIL": f"https://accounts.google.com/signin/recovery?email={email_part}",
+        "YAHOO": f"https://login.yahoo.com/account/recovery?email={email}",
+        "OUTLOOK": f"https://login.live.com/login.srf?wa=wsignin1.0"
     }
     
-    return urls.get(proveedor, urls["gmail.com"])
+    return urls.get(proveedor, urls["GMAIL"])
 
 
 # Inicializar modelo
@@ -245,9 +253,18 @@ def generar_email():
     
     variantes = generar_variantes(nombre, apellido, numero)
     
+    print(f"\n[EMAIL GENERATOR] 🎯 Generando emails para {nombre} {apellido}")
+    print(f"[EMAIL GENERATOR] 📧 Creando {len(variantes)} variantes en BD...\n")
+    
     # Guardar en BD
     for v in variantes:
-        email_model.crear(v['email'], nombre, apellido, v['proveedor'])
+        result = email_model.crear(v['email'], nombre, apellido, v['proveedor'])
+        if result:
+            print(f"[EMAIL GENERATOR] ✅ {v['email']}")
+        else:
+            print(f"[EMAIL GENERATOR] ⚠️ Error guardando {v['email']}")
+    
+    print(f"\n[EMAIL GENERATOR] ✅ Completado\n")
     
     stats = email_model.obtener_estadisticas()
     
@@ -281,6 +298,9 @@ def guardar_verificacion_email():
         
         if not email or existe is None:
             return jsonify({"success": False, "error": "Datos incompletos"}), 400
+        
+        print(f"\n[VERIFICACIÓN] 📧 {email}")
+        print(f"[VERIFICACIÓN] Estado: {'✅ EXISTE' if existe else '❌ NO EXISTE'}\n")
         
         email_model.actualizar(email, existe)
         

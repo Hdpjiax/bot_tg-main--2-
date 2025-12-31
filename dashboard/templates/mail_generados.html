@@ -36,25 +36,39 @@
           <th>Email</th>
           <th>Nombre</th>
           <th>Proveedor</th>
-          <th>Existe</th>
+          <th>Estado</th>
+          <th>Acción</th>
           <th>Fecha</th>
         </tr>
       </thead>
       <tbody>
         {% for e in emails %}
-        <tr>
+        <tr id="row-{{ e.email }}">
           <td><code>{{ e.email }}</code></td>
           <td>{{ e.nombre }} {{ e.apellido or '' }}</td>
           <td>
             <span class="badge-proveedor">{{ e.proveedor or 'N/A' }}</span>
           </td>
           <td>
-            {% if e.existe_en_proveedor == True %}
-              <span class="status-badge status-exists">✅ Sí</span>
-            {% elif e.existe_en_proveedor == False %}
-              <span class="status-badge status-not-exists">❌ No</span>
+            <span id="status-{{ e.email }}" class="status-badge {% if e.existe_en_proveedor == True %}status-exists{% elif e.existe_en_proveedor == False %}status-not-exists{% else %}status-pending{% endif %}">
+              {% if e.existe_en_proveedor == True %}
+                ✅ Sí
+              {% elif e.existe_en_proveedor == False %}
+                ❌ No
+              {% else %}
+                ⏳ Pendiente
+              {% endif %}
+            </span>
+          </td>
+          <td>
+            {% if e.existe_en_proveedor == None %}
+              <button type="button" class="btn-verificar" onclick="abrirVerificacion('{{ e.email }}', '{{ e.proveedor }}')">
+                🔗 Verificar
+              </button>
             {% else %}
-              <span class="status-badge status-pending">⏳ Pendiente</span>
+              <button type="button" class="btn-copiar" onclick="copiar('{{ e.email }}')">
+                📋 Copiar
+              </button>
             {% endif %}
           </td>
           <td>
@@ -78,6 +92,117 @@
   </div>
   {% endif %}
 </div>
+
+<!-- MODAL: Confirmación de verificación -->
+<div id="modal-verificar" class="modal">
+    <div class="modal-content">
+        <button type="button" onclick="cerrarModal()" class="modal-close">✕</button>
+        
+        <h2>🔐 Verificar Email</h2>
+        
+        <div class="modal-email-box">
+            <p><strong>Email:</strong> <span id="email-modal" class="email-code"></span></p>
+            <p><strong>Proveedor:</strong> <span id="proveedor-modal" class="proveedor-code"></span></p>
+        </div>
+        
+        <ol class="modal-instructions">
+            <li><strong>Haz click en "Abrir Proveedor"</strong> - Se abrirá en nueva pestaña</li>
+            <li><strong>Intenta recuperar la cuenta</strong> - Ingresa el email para verificar</li>
+            <li><strong>Observa la respuesta del proveedor</strong></li>
+            <li><strong>Vuelve a esta pestaña</strong> - Selecciona si existe o no</li>
+            <li><strong>El resultado se guarda automáticamente</strong></li>
+        </ol>
+        
+        <button type="button" id="btn-abrir" onclick="abrirProveedor()" class="btn-modal-primary">
+            🌐 Abrir Proveedor
+        </button>
+        
+        <p class="modal-question">¿Existe el email en este proveedor?</p>
+        <div class="modal-buttons">
+            <button type="button" onclick="guardarResultado(true)" class="btn-modal-success">
+                ✅ Sí, existe
+            </button>
+            <button type="button" onclick="guardarResultado(false)" class="btn-modal-error">
+                ❌ No existe
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+let emailActual = "";
+let proveedorActual = "";
+
+function copiar(email) {
+  navigator.clipboard.writeText(email);
+  alert('✅ ' + email + ' copiado al portapapeles');
+}
+
+function abrirVerificacion(email, proveedor) {
+    emailActual = email;
+    proveedorActual = proveedor;
+    
+    document.getElementById("email-modal").textContent = emailActual;
+    document.getElementById("proveedor-modal").textContent = proveedorActual;
+    document.getElementById("modal-verificar").style.display = "flex";
+}
+
+function cerrarModal() {
+    document.getElementById("modal-verificar").style.display = "none";
+}
+
+function abrirProveedor() {
+    fetch(`/verificar-email/${encodeURIComponent(emailActual)}/${proveedorActual}`)
+        .then(r => r.json())
+        .then(data => {
+            if (data.url) {
+                window.open(data.url, '_blank');
+            } else {
+                alert("Error: No se pudo abrir el proveedor");
+            }
+        })
+        .catch(err => {
+            console.error("Error:", err);
+            alert("Error al conectar");
+        });
+}
+
+function guardarResultado(existe) {
+    if (!emailActual) {
+        alert("Error: Email no definido");
+        return;
+    }
+    
+    const data = {
+        email: emailActual,
+        existe: existe
+    };
+    
+    fetch("/guardar-verificacion-email", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify(data)
+    })
+    .then(r => r.json())
+    .then(res => {
+        if (res.success) {
+            alert("✅ Resultado guardado!");
+            cerrarModal();
+            setTimeout(() => {
+                location.reload();
+            }, 500);
+        } else {
+            alert("❌ Error: " + res.error);
+        }
+    })
+    .catch(err => {
+        console.error("Error:", err);
+        alert("Error al guardar");
+    });
+}
+</script>
 
 <!-- Botones de navegación -->
 <div style="margin-top: 20px; display: flex; gap: 10px;">
