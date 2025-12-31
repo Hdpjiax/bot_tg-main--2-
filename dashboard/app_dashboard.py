@@ -13,24 +13,33 @@ from flask import (
 )
 from supabase import create_client, Client
 from telegram import Bot, InputMediaPhoto
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.chrome.options import Options
+import threading
+import time
 
 
-# ----------------- CONFIG -----------------
-
+# ============================================================================
+# CONFIG
+# ============================================================================
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
-
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 bot = Bot(token=BOT_TOKEN)
-
 
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "cambia_esto")
 
 
+# ============================================================================
+# FUNCIONES AUXILIARES
+# ============================================================================
 
 def rango_proximos():
     hoy = datetime.utcnow().date()
@@ -38,12 +47,12 @@ def rango_proximos():
     return hoy, hasta
 
 
-
 def enviar_mensaje(chat_id: int, texto: str):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     data = {"chat_id": chat_id, "text": texto}
     r = requests.post(url, data=data, timeout=10)
     r.raise_for_status()
+
     
 def enviar_foto(chat_id: int, fileobj, caption: str = ""):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto"
@@ -110,14 +119,16 @@ class EmailGenerado:
             total = len(all_emails)
             existe_count = len([e for e in all_emails if e.get("existe_en_google") == True])
             no_existe_count = len([e for e in all_emails if e.get("existe_en_google") == False])
+            pendiente_count = len([e for e in all_emails if e.get("existe_en_google") is None])
             return {
                 "total": total,
                 "existe_count": existe_count,
-                "no_existe_count": no_existe_count
+                "no_existe_count": no_existe_count,
+                "pendiente_count": pendiente_count
             }
         except Exception as e:
             print(f"Error obteniendo estadísticas: {e}")
-            return {"total": 0, "existe_count": 0, "no_existe_count": 0}
+            return {"total": 0, "existe_count": 0, "no_existe_count": 0, "pendiente_count": 0}
 
 
 def generar_variantes(nombre, apellido, numero=""):
@@ -154,8 +165,136 @@ def generar_url_verificacion_google(email):
     return url
 
 
+# ============================================================================
+# VERIFICADOR AUTOMÁTICO CON SELENIUM
+# ============================================================================
+
+class VerificadorAutomatico:
+    """Verifica automáticamente si emails existen en Google"""
+    
+    def __init__(self, supabase_client):
+        self.db = supabase_client
+        self.table = "emails_generados"
+    
+    def verificar_email_en_google(self, email):
+        """Verifica si un email existe en Google de forma automática"""
+        driver = None
+        try:
+            chrome_options = Options()
+            chrome_options.add_argument("--headless")
+            chrome_options.add_argument("--no-sandbox")
+            chrome_options.add_argument("--disable-dev-shm-usage")
+            chrome_options.add_argument("--disable-blink-features=AutomationControlled")
+            chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+            chrome_options.add_argument("--window-size=1920,1080")
+            
+            driver = webdriver.Chrome(options=chrome_options)
+            driver.set_page_load_timeout(15)
+            
+            email_part = email.split('@')[0]
+            url = f"https://accounts.google.com/signin/recovery?email={email_part}"
+            
+            driver.get(url)
+            time.sleep(3)
+            
+            try:
+                WebDriverWait(driver, 10).until(
+                    EC.presence_of_all_elements_located((By.TAG_NAME, "input"))
+                )
+            except:
+                pass
+            
+            time.sleep(2)
+            
+            # Buscar mensaje de error
+            try:
+                # Intenta encontrar el elemento de error
+                error_messages = [
+                    "//*[contains(text(), 'No encontramos')]",
+                    "//*[contains(text(), 'No hemos encontrado')]",
+                    "//*[contains(text(), 'cuenta')]//span[contains(text(), 'No')]"
+                ]
+                
+                encontrado_error = False
+                for xpath in error_messages:
+                    try:
+                        driver.find_element(By.XPATH, xpath)
+                        encontrado_error = True
+                        break
+                    except:
+                        continue
+                
+                resultado = not encontrado_error  # Si hay error, no existe
+            except:
+                resultado = True  # Asume que existe si no hay error
+            
+            return resultado
+        
+        except Exception as e:
+            print(f"[AUTO] Error verificando {email}: {e}")
+            return None
+        
+        finally:
+            if driver:
+                try:
+                    driver.quit()
+                except:
+                    pass
+    
+    def procesar_pendientes_automatico(self):
+        """Procesa TODOS los emails pendientes automáticamente"""
+        try:
+            response = self.db.table(self.table).select("*").is_("existe_en_google", None).execute()
+            pendientes = response.data if response.data else []
+            
+            if pendientes:
+                print(f"\n[AUTO] ✨ Encontrados {len(pendientes)} emails pendientes")
+            
+            for email_record in pendientes:
+                email = email_record.get("email")
+                
+                if not email:
+                    continue
+                
+                print(f"[AUTO] 🔍 Verificando: {email}")
+                
+                existe = self.verificar_email_en_google(email)
+                
+                if existe is not None:
+                    try:
+                        self.db.table(self.table).update({
+                            "existe_en_google": existe,
+                            "verificado_en": datetime.now().isoformat()
+                        }).eq("email", email).execute()
+                        
+                        status = "✅ EXISTE" if existe else "❌ NO EXISTE"
+                        print(f"[AUTO] {status} → {email}")
+                    except Exception as e:
+                        print(f"[AUTO] Error actualizando BD: {e}")
+                
+                time.sleep(2)
+        
+        except Exception as e:
+            print(f"[AUTO] Error en proceso: {e}")
+    
+    def iniciar_verificacion_automatica(self):
+        """Inicia un thread que verifica automáticamente"""
+        def worker():
+            while True:
+                self.procesar_pendientes_automatico()
+                time.sleep(60)  # Esperar 60 segundos entre verificaciones
+        
+        thread = threading.Thread(target=worker, daemon=True)
+        thread.start()
+        print("[AUTO] ✅ Sistema de verificación automática INICIADO\n")
+
+
 # Inicializar modelo de emails
 email_model = EmailGenerado(supabase)
+
+# Inicializar y arrancar verificador automático
+verificador_automatico = VerificadorAutomatico(supabase)
+verificador_automatico.iniciar_verificacion_automatica()
 
 
 # ============================================================================
@@ -187,7 +326,8 @@ def mail_generator():
         apellido=apellido,
         total=stats['total'],
         existe_count=stats['existe_count'],
-        no_existe_count=stats['no_existe_count']
+        no_existe_count=stats['no_existe_count'],
+        pendiente_count=stats.get('pendiente_count', 0)
     )
 
 
@@ -208,7 +348,8 @@ def generar_email():
             error="Nombre y apellido son requeridos",
             total=stats['total'],
             existe_count=stats['existe_count'],
-            no_existe_count=stats['no_existe_count']
+            no_existe_count=stats['no_existe_count'],
+            pendiente_count=stats.get('pendiente_count', 0)
         )
     
     variantes = generar_variantes(nombre, apellido, numero)
@@ -227,7 +368,8 @@ def generar_email():
         apellido=apellido,
         total=stats['total'],
         existe_count=stats['existe_count'],
-        no_existe_count=stats['no_existe_count']
+        no_existe_count=stats['no_existe_count'],
+        pendiente_count=stats.get('pendiente_count', 0)
     )
 
 
@@ -240,7 +382,7 @@ def verificar_email_gmail(email):
 
 @app.route('/guardar-verificacion-email', methods=['POST'])
 def guardar_verificacion_email():
-    """Guarda el resultado de la verificación"""
+    """Guarda el resultado de la verificación manual"""
     try:
         data = request.get_json()
         
