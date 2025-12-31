@@ -451,7 +451,29 @@ def mail_generados():
         no_existe_count=stats['no_existe_count']
     )
 
-
+@app.route('/obtener-estado-email/<email>', methods=['GET'])
+def obtener_estado_email(email):
+    """Retorna el estado actual de un email en JSON"""
+    try:
+        response = supabase.table("emails_generados").select("existe_en_google").eq("email", email).single().execute()
+        
+        if response.data:
+            existe = response.data.get("existe_en_google")
+            return jsonify({
+                "email": email,
+                "existe": existe
+            })
+        else:
+            return jsonify({
+                "email": email,
+                "existe": None
+            })
+    except Exception as e:
+        print(f"Error obteniendo estado: {e}")
+        return jsonify({
+            "email": email,
+            "existe": None
+        }), 500
 # ============================================================================
 # RUTAS - GENERAL / ESTADÍSTICAS
 # ============================================================================
@@ -776,8 +798,6 @@ def proximos_vuelos():
         .data
     )
     return render_template("proximos_vuelos.html", vuelos=proximos)
-
-
 # ============================================================================
 # RUTAS - HISTORIAL
 # ============================================================================
