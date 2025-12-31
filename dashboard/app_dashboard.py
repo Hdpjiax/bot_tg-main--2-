@@ -18,6 +18,8 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
+import logging
+logging.getLogger('WDM').setLevel(logging.CRITICAL)
 from urllib.parse import quote
 import threading
 import time
@@ -182,7 +184,12 @@ def generar_url_verificacion_google(email):
 # VERIFICADOR CON SELENIUM (PRODUCCIÓN)
 # ============================================================================
 
-
+try:
+    from webdriver_manager.chrome import ChromeDriverManager
+    ChromeDriverManager().install()
+    print("[INIT] ✅ ChromeDriver descargado correctamente")
+except Exception as e:
+    print(f"[INIT] ⚠️ Error descargando ChromeDriver: {e}")
 class VerificadorConSelenium:
     """Verifica emails con Selenium en background"""
     
