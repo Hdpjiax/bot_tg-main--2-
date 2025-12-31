@@ -10,7 +10,9 @@ from telegram import Bot, InputMediaPhoto
 import logging
 logging.getLogger('WDM').setLevel(logging.CRITICAL)
 from urllib.parse import quote
-
+import asyncio
+import threading
+from spam_telegram import SpamTelegram 
 
 # ============================================================================
 # CONFIG
@@ -182,7 +184,7 @@ def generar_url_verificacion(email, proveedor):
     urls = {
         "GMAIL": f"https://accounts.google.com/signin/recovery?email={email_part}",
         "YAHOO": f"https://login.yahoo.com/account/recovery?email={email}",
-        "OUTLOOK": f"https://login.live.com/login.srf?wa=wsignin1.0"
+         "OUTLOOK": f"https://account.live.com/password/reset" 
     }
     
     return urls.get(proveedor, urls["GMAIL"])
@@ -722,6 +724,88 @@ def historial_usuario(username):
         pagos_confirmados=pagos_confirmados,
     )
 
+# ============================================================================
+# RUTAS - SPAM TELEGRAM
+# ============================================================================
+
+@app.route('/spam-telegram', methods=['GET'])
+def spam_telegram_page():
+    """Página del spam"""
+    stats = email_model.obtener_estadisticas()
+    return render_template(
+        'spam_telegram.html',
+        total=stats['total'],
+        existe_count=stats['existe_count'],
+        no_existe_count=stats['no_existe_count']
+    )
+
+
+@app.route('/accion/spam-tg', methods=['POST'])
+def accion_spam_tg():
+    """Ejecuta spam en Telegram"""
+    try:
+        enlaces = request.form.get('enlaces', '').strip().split('\n')
+        mensaje = request.form.get('mensaje', '').strip()
+        repeticiones = int(request.form.get('repeticiones', 5))
+        delay = int(request.form.get('delay', 2))
+        
+        # Validar
+        enlaces = [e.strip() for e in enlaces if e.strip()]
+        
+        if not enlaces or not mensaje:
+            flash("Necesitas enlaces y mensaje", "error")
+            return redirect(url_for('spam_telegram_page'))
+        
+        if repeticiones > 20:
+            flash("Máximo 20 repeticiones", "error")
+            return redirect(url_for('spam_telegram_page'))
+        
+        if delay < 1:
+            flash("Mínimo 1 segundo de delay", "error")
+            return redirect(url_for('spam_telegram_page'))
+        
+        # Obtener credenciales de Telegram
+        TG_API_ID = os.getenv('TG_API_ID')
+        TG_API_HASH = os.getenv('TG_API_HASH')
+        TG_PHONE = os.getenv('TG_PHONE')
+        
+        if not all([TG_API_ID, TG_API_HASH, TG_PHONE]):
+            flash("Faltan credenciales de Telegram en .env", "error")
+            return redirect(url_for('spam_telegram_page'))
+        
+        # Ejecutar en background
+        def ejecutar_spam():
+            async def main():
+                spam = SpamTelegram(
+                    api_id=int(TG_API_ID),
+                    api_hash=TG_API_HASH,
+                    phone=TG_PHONE
+                )
+                
+                if await spam.conectar():
+                    await spam.spam_multiples_grupos(
+                        enlaces,
+                        mensaje,
+                        repeticiones=repeticiones,
+                        delay=delay,
+                        delay_entre_grupos=5
+                    )
+                    await spam.desconectar()
+                else:
+                    print("❌ No se pudo conectar a Telegram")
+            
+            asyncio.run(main())
+        
+        # Ejecutar en thread para no bloquear
+        thread = threading.Thread(target=ejecutar_spam, daemon=True)
+        thread.start()
+        
+        flash(f"✅ Spam iniciado en {len(enlaces)} grupos", "success")
+        return redirect(url_for('spam_telegram_page'))
+    
+    except Exception as e:
+        flash(f"Error: {str(e)}", "error")
+        return redirect(url_for('spam_telegram_page'))
 
 # ============================================================================
 # MAIN

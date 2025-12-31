@@ -53,7 +53,7 @@
           <th>Email</th>
           <th>Proveedor</th>
           <th>Estado</th>
-          <th>Acción</th>
+          <th>Acciones</th>
         </tr>
       </thead>
       <tbody>
@@ -69,16 +69,20 @@
             </span>
           </td>
           <td>
-            <button type="button" class="btn-verificar" onclick="abrirVerificacion('{{ v.email }}', '{{ v.proveedor }}')">
-              {% if v.proveedor == 'GMAIL' %}
-                🔗 Gmail
-              {% elif v.proveedor == 'YAHOO' %}
-                🔗 Yahoo
-              {% else %}
-                🔗 Outlook
-              {% endif %}
-            </button>
-            <button type="button" class="btn-copiar" id="copy-{{ v.email }}" onclick="copiar('{{ v.email }}')" style="display: none;">📋 Copiar</button>
+            <div class="action-buttons">
+              <button type="button" class="btn-verificar" id="btn-verificar-{{ v.email }}" onclick="abrirVerificacion('{{ v.email }}', '{{ v.proveedor }}')">
+                {% if v.proveedor == 'GMAIL' %}
+                  🔗 Gmail
+                {% elif v.proveedor == 'YAHOO' %}
+                  🔗 Yahoo
+                {% else %}
+                  🔗 Outlook
+                {% endif %}
+              </button>
+              <button type="button" class="btn-copiar" id="copy-{{ v.email }}" onclick="copiar('{{ v.email }}')" title="Copiar email al portapapeles">
+                📋 Copiar
+              </button>
+            </div>
           </td>
         </tr>
         {% endfor %}
@@ -94,7 +98,7 @@
       emailsToCheck.forEach(v => {
         const statusEl = document.getElementById('status-' + v.email);
         const btnCopiar = document.getElementById('copy-' + v.email);
-        const btnVerificar = document.querySelector(`button[onclick="abrirVerificacion('${v.email}', '${v.proveedor}')"]`);
+        const btnVerificar = document.getElementById('btn-verificar-' + v.email);
         
         if (!statusEl) return;
 
@@ -115,7 +119,7 @@
               statusEl.className = 'status-badge status-pending';
               statusEl.innerHTML = '⏳ Pendiente';
               btnVerificar.style.display = 'inline-block';
-              btnCopiar.style.display = 'none';
+              btnCopiar.style.display = 'inline-block';
             }
           })
           .catch(e => console.log('Error:', e));
@@ -134,12 +138,13 @@
       <li>Ingresa <strong>Nombre</strong> y <strong>Apellido</strong></li>
       <li>Haz click en "Generar 20 Emails"</li>
       <li>Se generarán automáticamente 20 variantes en Gmail, Yahoo y Outlook</li>
-      <li>Haz click en el botón del proveedor (Gmail, Yahoo, Outlook)</li>
+      <li><strong>Todos los emails tienen botón de copiar desde el inicio</strong></li>
+      <li>Haz click en el botón del proveedor (Gmail, Yahoo, Outlook) para verificar</li>
       <li>Se abrirá la página de verificación en una nueva pestaña</li>
       <li>Intenta recuperar la cuenta con ese email</li>
       <li>Si existe o no, selecciona el resultado en la tabla</li>
       <li>Los resultados se guardan automáticamente en tu BD</li>
-      <li>Copia los emails que SÍ existen con el botón "📋 Copiar"</li>
+      <li>Copia los emails con el botón "📋 Copiar" en cualquier momento</li>
     </ol>
   </div>
 
@@ -186,8 +191,18 @@ let emailActual = "";
 let proveedorActual = "";
 
 function copiar(email) {
-  navigator.clipboard.writeText(email);
-  alert('✅ ' + email + ' copiado al portapapeles');
+  navigator.clipboard.writeText(email).then(() => {
+    // Mostrar feedback visual
+    const button = document.getElementById('copy-' + email);
+    const originalText = button.innerHTML;
+    button.innerHTML = '✅ Copiado!';
+    
+    setTimeout(() => {
+      button.innerHTML = originalText;
+    }, 2000);
+  }).catch(() => {
+    alert('Error al copiar');
+  });
 }
 
 function abrirVerificacion(email, proveedor) {
@@ -204,19 +219,23 @@ function cerrarModal() {
 }
 
 function abrirProveedor() {
-    fetch(`/verificar-email/${encodeURIComponent(emailActual)}/${proveedorActual}`)
-        .then(r => r.json())
-        .then(data => {
-            if (data.url) {
-                window.open(data.url, '_blank');
-            } else {
-                alert("Error: No se pudo abrir el proveedor");
-            }
-        })
-        .catch(err => {
-            console.error("Error:", err);
-            alert("Error al conectar");
-        });
+    const email = emailActual;
+    const proveedor = proveedorActual;
+    
+    // URLs específicas por proveedor
+    const urls = {
+        "GMAIL": "https://accounts.google.com/signin/recovery",
+        "YAHOO": "https://login.yahoo.com/account/recovery",
+        "OUTLOOK": "https://account.live.com/password/reset"
+    };
+    
+    const url = urls[proveedor] || urls["GMAIL"];
+    
+    if (proveedor === "OUTLOOK") {
+        alert(`⚠️ Outlook requiere verificación manual:\n\n1. Se abrirá la página de Outlook\n2. Haz click en "No puedo acceder a mi cuenta"\n3. Ingresa el email: ${email}\n4. Sigue los pasos de recuperación\n5. Si el email existe, podrás recuperarlo\n6. Si no existe, te lo dirá`);
+    }
+    
+    window.open(url, '_blank');
 }
 
 function guardarResultado(existe) {

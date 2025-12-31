@@ -1,0 +1,203 @@
+{% extends "base.html" %}
+
+{% block titulo %}Spam Telegram{% endblock %}
+{% block subtitulo %}Envía mensajes a múltiples grupos de Telegram.{% endblock %}
+
+{% block contenido %}
+<div class="glass card">
+  <h3>📢 Spam en Grupos Telegram</h3>
+  
+  <form action="{{ url_for('accion_spam_tg') }}" method="post" class="form-spam">
+    
+    <!-- MENSAJE -->
+    <div class="form-group">
+      <label for="mensaje" class="form-label">📝 Mensaje a Enviar:</label>
+      <textarea 
+        name="mensaje" 
+        id="mensaje" 
+        class="form-control" 
+        placeholder="Escribe el mensaje que deseas enviar..."
+        rows="4"
+        required
+      ></textarea>
+    </div>
+
+    <!-- ENLACES -->
+    <div class="form-group">
+      <label for="enlaces" class="form-label">🔗 Enlaces de Grupos (uno por línea):</label>
+      <textarea 
+        name="enlaces" 
+        id="enlaces" 
+        class="form-control" 
+        placeholder="https://t.me/groupname&#10;https://t.me/joinchat/ABC123&#10;t.me/+123456789"
+        rows="6"
+        required
+      ></textarea>
+      <small style="color: var(--text-muted); margin-top: 8px; display: block;">
+        ℹ️ Soporta: https://t.me/groupname, t.me/joinchat/ABC123, t.me/+números
+      </small>
+    </div>
+
+    <!-- OPCIONES -->
+    <div class="options-row">
+      <div class="form-group">
+        <label for="repeticiones" class="form-label">🔁 Repeticiones por grupo:</label>
+        <input 
+          type="number" 
+          name="repeticiones" 
+          id="repeticiones" 
+          class="form-control" 
+          value="5" 
+          min="1" 
+          max="20"
+          required
+        >
+        <small style="color: var(--text-muted);">1-20 mensajes</small>
+      </div>
+
+      <div class="form-group">
+        <label for="delay" class="form-label">⏱️ Delay entre mensajes:</label>
+        <input 
+          type="number" 
+          name="delay" 
+          id="delay" 
+          class="form-control" 
+          value="2" 
+          min="1" 
+          max="30"
+          required
+        >
+        <small style="color: var(--text-muted);">segundos</small>
+      </div>
+    </div>
+
+    <!-- INFO -->
+    <div class="info-box">
+      <h4>⚠️ Información Importante:</h4>
+      <ul>
+        <li>✅ Máximo 60 mensajes por hora</li>
+        <li>✅ Se detiene automáticamente si eres baneado</li>
+        <li>✅ Respeta delays para evitar bloqueos</li>
+        <li>❌ No intentes enviar spam ofensivo</li>
+        <li>❌ Respeta las reglas de cada grupo</li>
+      </ul>
+    </div>
+
+    <button type="submit" class="btn-submit">🚀 Iniciar Spam</button>
+  </form>
+
+  <!-- ESTADÍSTICAS -->
+  {% if total > 0 %}
+  <div class="cards-row" style="margin-top: 30px;">
+    <div class="info-card info-card--blue">
+      <div class="info-card__label">Total Generados</div>
+      <div class="info-card__value">{{ total }}</div>
+    </div>
+    <div class="info-card info-card--green">
+      <div class="info-card__label">Verificados</div>
+      <div class="info-card__value">{{ existe_count }}</div>
+    </div>
+    <div class="info-card info-card--yellow">
+      <div class="info-card__label">Sin Verificar</div>
+      <div class="info-card__value">{{ no_existe_count }}</div>
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+
+<style>
+.form-spam {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.form-label {
+  font-weight: 600;
+  color: var(--text-main);
+  font-size: 0.95rem;
+}
+
+.form-control {
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-main);
+  font-family: inherit;
+  font-size: 0.95rem;
+  transition: border-color 0.2s;
+}
+
+.form-control:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.options-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 15px;
+}
+
+.info-box {
+  background: rgba(34, 197, 94, 0.1);
+  border-left: 4px solid var(--accent);
+  padding: 15px;
+  border-radius: 8px;
+  color: var(--text-main);
+}
+
+.info-box h4 {
+  margin-top: 0;
+  color: var(--accent);
+}
+
+.info-box ul {
+  margin: 10px 0;
+  padding-left: 20px;
+}
+
+.info-box li {
+  margin: 6px 0;
+  font-size: 0.9rem;
+}
+
+.btn-submit {
+  padding: 12px 20px;
+  background: var(--accent);
+  color: #022c22;
+  border: none;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.btn-submit:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.3);
+}
+
+@media (max-width: 768px) {
+  .options-row {
+    grid-template-columns: 1fr;
+  }
+}
+</style>
+
+<!-- Botones de navegación -->
+<div style="margin-top: 20px; display: flex; gap: 10px;">
+  <a href="{{ url_for('mail_generator') }}" class="btn-link">← Mail Generator</a>
+  <a href="{{ url_for('general') }}" class="btn-link">← Dashboard</a>
+</div>
+
+{% endblock %}
